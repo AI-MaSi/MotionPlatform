@@ -6,17 +6,14 @@ import threading
 
 import motionplatf_controls
 import read_bin
+from config import loop_delay, file_name, BUFFER_SIZE, host, port
 
-
-delay = 0.05
 
 # Lock needed if using multiple threads in the future
 data_save_lock = threading.Lock()
 
 data_buffer = []
-BUFFER_SIZE = 100
 sequence_number = 0
-file_name = "/log/motionplatf_data.bin"
 
 motionplatf_output = motionplatf_controls.DataOutput(simulation_mode=False, decimals=3)
 
@@ -42,7 +39,6 @@ def send_data(server_socket, values):
         checksum = compute_checksum(full_data)
         full_data += struct.pack('<B', checksum)  # B is for an unsigned char
 
-
         server_socket.send(full_data)
 
         sequence_number += 1
@@ -60,6 +56,16 @@ def send_keep_alive(server_socket):
     except Exception as e:
         print(f"Failed to send keep-alive signal: {e}")
         return False
+
+
+def send_start_flag(server_socket):
+    # tell the excavator to start running
+    pass
+
+def send_stop_flag(server_socket):
+    # tell the excavator to stop running
+    pass
+
 
 
 def receive_keep_alive(server_socket):
@@ -106,10 +112,10 @@ def receive_data(server_socket, num_outputs, data_type='<d'):
     return decoded_values
 
 
-def request_data():
+def request_data(combine, pack):
     # if pack=True, the data is packed with struct. 8+12 doubles
-    #print(motionplatf_output.read(combine=True, pack=False))
-    return motionplatf_output.read(combine=True, pack=True)
+    # print(motionplatf_output.read(combine=True, pack=False))
+    return motionplatf_output.read(combine, pack)
 
 
 def save_data_with_timestamp(data):
@@ -144,30 +150,32 @@ def save_remaining_data(entry_size=20):
         with open(file_name, 'ab') as f:
             for value in data_buffer:
                 missing_values = entry_size - (len(value) // 8 - 1)  # subtract 1 for the timestamp
-                value += struct.pack('<{}d'.format(missing_values), *([0.0] * missing_values)) # 0.0 doubles
+                value += struct.pack('<{}d'.format(missing_values), *([0.0] * missing_values))  # 0.0 doubles
                 f.write(value)
         data_buffer.clear()
         print("\nSaved remaining data. Printing it in couple seconds...")
 
 
-# The code loops here
+# The code loops here, should be made better in the future
 def client_handler(client_socket, addr, num_inputs, num_outputs, is_mevea):
     # is is_mevea needed anymore?
     try:
         while True:
             # Send data to Excavator
-            data_for_excavator = request_data()
-            if data_for_excavator is None:
-                print("No data available for sending!")
+            controller_data = request_data(combine=True, pack=True)
+
+            if controller_data is None:
+                print("No controller data available!")
                 break
 
             if is_mevea == 0:
                 if num_inputs is None:
                     send_success = send_keep_alive(client_socket)
                 else:
-                    send_success = send_data(client_socket, data_for_excavator)
+                    send_success = send_data(client_socket, controller_data)
 
-                save_data_with_timestamp(data_for_excavator)  # Save the inputs data
+                # data saving disabled for now
+                # save_data_with_timestamp(data_for_excavator)  # Save the inputs data
                 if not send_success:
                     break
 
@@ -178,7 +186,7 @@ def client_handler(client_socket, addr, num_inputs, num_outputs, is_mevea):
                     recv_success, received_data = receive_data(client_socket, num_outputs)
                     pass
 
-                sleep(delay)
+                sleep(loop_delay)
 
                 if not recv_success:
                     break
@@ -187,7 +195,8 @@ def client_handler(client_socket, addr, num_inputs, num_outputs, is_mevea):
         print(f"\nClient handler Error with {addr}: {e}")
         client_socket.close()
     finally:
-        save_remaining_data()
+        # data saving disabled for now
+        # save_remaining_data()
         client_socket.close()
         sleep(3)
 
@@ -209,16 +218,13 @@ def handshake(server_socket, addr):
         if is_mevea == 0:
             print(f"Handshake received from Excavator ({addr}) with {num_inputs} inputs and {num_outputs} outputs.")
 
-
         elif is_mevea == 1:
             print(f"Handshake received from Mevea ({addr}) with {num_inputs} inputs and {num_outputs} outputs.")
-
 
         elif is_mevea > 1:
             print(f"Unknown handshake received from {addr} with {num_inputs} inputs and {num_outputs} outputs.")
             server_socket.close()  # Close the socket to end the connection
             return False, None, None, None
-
 
         response = struct.pack('<3i', is_mevea, num_inputs, num_outputs)
         server_socket.send(response)
@@ -241,19 +247,6 @@ def handshake(server_socket, addr):
 
 
 def main():
-    # this takes the wrong network card
-    # host = socket.gethostbyname(socket.gethostname())
-    # host = '127.0.0.1'
-    host = '10.214.5.110'
-    port = 5111
-
-    # Clear the file
-    try:
-        with open(file_name, 'wb') as file:
-            pass
-    except Exception as e:
-        pass
-
     try:
         server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -272,9 +265,18 @@ def main():
 
                 client_handler(client_socket, addr, num_inputs, num_outputs, is_mevea)
 
+            client_socket.close()
+
     except Exception as e:
         print(f"\nSocket connection Error: {e}")
 
 
 if __name__ == "__main__":
+    # Clear the file
+    try:
+        with open(file_name, 'wb') as file:
+            pass
+    except Exception as e:
+        pass
+
     main()
