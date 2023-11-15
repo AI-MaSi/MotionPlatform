@@ -39,7 +39,7 @@ pyvjoy_axis = [
 
 try:
     while True:
-        stick_values, button_values = motionplatf_output.read(combine=False, pack=False)
+        stick_values, button_values = motionplatf_output.read(combine=False)
 
         # joysticks
         for axis_id, value in zip(pyvjoy_axis, stick_values):

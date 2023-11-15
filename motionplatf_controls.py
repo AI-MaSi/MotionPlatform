@@ -8,10 +8,9 @@
 
 # arguments in the read-function
 # combine, make the code return values separated (ai, di) or combined (aidi)
-# pack, pack the data with struct.
+# pack (MOVED ELSEWHERE), pack the data with struct.
 
 import random
-import struct
 
 # Constants for channel counts
 NUM_AI_CHANNELS = 8
@@ -95,7 +94,7 @@ class DataOutput:
         except Exception as e:
             print(f"Unknown error. Are NiDAQ drivers installed?: {e}")
 
-    def read(self, combine=True, pack=False):
+    def read(self, combine=True):
         ai_channel_data = []
         di_channel_data = []
 
@@ -121,15 +120,8 @@ class DataOutput:
 
         if combine:
             combined_data = ai_channel_data + di_channel_data
-            if pack:
-                packed_data = struct.pack(endian_specifier + format_type * len(combined_data), *combined_data)  # Pack as floats
-                return packed_data # Single packed list
             return combined_data  # Single unpacked list
         else:
-            if pack:
-                packed_ai = struct.pack(endian_specifier + format_type * len(ai_channel_data), *ai_channel_data)
-                packed_di = struct.pack(endian_specifier + format_type * len(di_channel_data), *di_channel_data)
-                return packed_ai, packed_di  # Separate packed lists
             return ai_channel_data, di_channel_data  # Separate unpacked lists
 
     def close_tasks(self):

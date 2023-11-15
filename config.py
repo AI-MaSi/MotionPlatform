@@ -1,4 +1,6 @@
+# explain these some day
 
+format_str = '<d'
 
 loop_delay = 0.02
 

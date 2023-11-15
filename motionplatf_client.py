@@ -6,7 +6,8 @@ import threading
 
 import motionplatf_controls
 import read_bin
-from config import loop_delay, file_name, BUFFER_SIZE, host, port
+from config import (loop_delay, file_name,
+                    BUFFER_SIZE, host, port, format_str)
 
 
 # Lock needed if using multiple threads in the future
@@ -14,6 +15,8 @@ data_save_lock = threading.Lock()
 
 data_buffer = []
 sequence_number = 0
+endian_specifier = format_str[0]  # Little-endian
+format_type = format_str[1:]  # Doubles
 
 motionplatf_output = motionplatf_controls.DataOutput(simulation_mode=False, decimals=3)
 
@@ -25,21 +28,24 @@ def compute_checksum(data):
     return checksum
 
 
-def send_data(server_socket, values):
+def pack_data(data):
+    packed_data = struct.pack(endian_specifier + format_type * len(data), *data)  # Pack as floats
+    return packed_data
+
+
+def send_data(server_socket, packed_values):
     global sequence_number
 
     try:
-        full_data = values
-
         # Append the sequence number to the beginning of the full data
         sequence_data = struct.pack('<I', sequence_number)  # I is for an unsigned int
-        full_data = sequence_data + full_data
+        packed_values = sequence_data + packed_values
 
         # Compute the checksum and append it to the end
-        checksum = compute_checksum(full_data)
-        full_data += struct.pack('<B', checksum)  # B is for an unsigned char
+        checksum = compute_checksum(packed_values)
+        packed_values += struct.pack('<B', checksum)  # B is for an unsigned char
 
-        server_socket.send(full_data)
+        server_socket.send(packed_values)
 
         sequence_number += 1
         return True
@@ -62,10 +68,10 @@ def send_start_flag(server_socket):
     # tell the excavator to start running
     pass
 
+
 def send_stop_flag(server_socket):
     # tell the excavator to stop running
     pass
-
 
 
 def receive_keep_alive(server_socket):
@@ -112,10 +118,10 @@ def receive_data(server_socket, num_outputs, data_type='<d'):
     return decoded_values
 
 
-def request_data(combine, pack):
+def request_data(combine):
     # if pack=True, the data is packed with struct. 8+12 doubles
     # print(motionplatf_output.read(combine=True, pack=False))
-    return motionplatf_output.read(combine, pack)
+    return motionplatf_output.read(combine)
 
 
 def save_data_with_timestamp(data):
@@ -162,7 +168,8 @@ def client_handler(client_socket, addr, num_inputs, num_outputs, is_mevea):
     try:
         while True:
             # Send data to Excavator
-            controller_data = request_data(combine=True, pack=True)
+            controller_data = request_data(combine=True)
+            packed_controller_data = pack_data(controller_data)
 
             if controller_data is None:
                 print("No controller data available!")
@@ -172,7 +179,7 @@ def client_handler(client_socket, addr, num_inputs, num_outputs, is_mevea):
                 if num_inputs is None:
                     send_success = send_keep_alive(client_socket)
                 else:
-                    send_success = send_data(client_socket, controller_data)
+                    send_success = send_data(client_socket, packed_controller_data)
 
                 # data saving disabled for now
                 # save_data_with_timestamp(data_for_excavator)  # Save the inputs data
