@@ -1,289 +1,297 @@
 import socket
 import struct
-from time import sleep
 import datetime
+from time import sleep
 import threading
-
 import motionplatf_controls
-import read_bin
-from config import (loop_delay, file_name,
-                    BUFFER_SIZE, host, port, format_str)
+import os
 
+# using these directly now. Add to __init__ if more flexibility needed
+from config import loop_delay, file_path, BUFFER_SIZE, host, port, data_type
 
-# Lock needed if using multiple threads in the future
-data_save_lock = threading.Lock()
+# make proper exceptions you lazy man
+class MotionPlatformClient:
+    def __init__(self, simulation_mode=True):
+        # lock needed if using threading in the future...
+        self.data_save_lock = threading.Lock()
+        self.endian_specifier = data_type[0]  # Little-endian
+        self.format_type = data_type[1:]  # Doubles
+        self.motionplatf_output = motionplatf_controls.DataOutput(simulation_mode, decimals=3)
 
-data_buffer = []
-sequence_number = 0
-endian_specifier = format_str[0]  # Little-endian
-format_type = format_str[1:]  # Doubles
+        self.server_socket = None
+        self.client_socket = None
+        self.addr = None
+        self.is_mevea = None
+        self.num_inputs = None
+        self.num_outputs = None
+        self.data_buffer = []
+        self.sequence_number = 0
 
-motionplatf_output = motionplatf_controls.DataOutput(simulation_mode=False, decimals=3)
+    @staticmethod
+    def compute_checksum(data):
+        checksum = 0
+        for byte in data:
+            checksum ^= byte
+        return checksum
 
+    def setup_server(self):
+        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.server_socket.bind((host, port))
+        self.server_socket.listen(1)
 
-def compute_checksum(data):
-    checksum = 0
-    for byte in data:
-        checksum ^= byte
-    return checksum
+    def run_server(self):
+        self.setup_server()
+        print(f"\nServer listening on {host}:{port}")
 
-
-def pack_data(data):
-    packed_data = struct.pack(endian_specifier + format_type * len(data), *data)  # Pack as floats
-    return packed_data
-
-
-def send_data(server_socket, packed_values):
-    global sequence_number
-
-    try:
-        # Append the sequence number to the beginning of the full data
-        sequence_data = struct.pack('<I', sequence_number)  # I is for an unsigned int
-        packed_values = sequence_data + packed_values
-
-        # Compute the checksum and append it to the end
-        checksum = compute_checksum(packed_values)
-        packed_values += struct.pack('<B', checksum)  # B is for an unsigned char
-
-        server_socket.send(packed_values)
-
-        sequence_number += 1
-        return True
-
-    except Exception as e:
-        print(f"send data exception: {e}")
-        return False
-
-
-def send_keep_alive(server_socket):
-    try:
-        server_socket.send(b'\x00')
-        return True
-    except Exception as e:
-        print(f"Failed to send keep-alive signal: {e}")
-        return False
-
-
-def send_start_flag(server_socket):
-    # tell the excavator to start running
-    pass
-
-
-def send_stop_flag(server_socket):
-    # tell the excavator to stop running
-    pass
-
-
-def receive_keep_alive(server_socket):
-    # just receive the keep alive
-
-    keep_alive = server_socket.recv(1)
-    if len(keep_alive) == 1:
-        return True, None
-    else:
-        print("Lost keep-alive signal.")
-        return False, None
-
-
-def receive_data(server_socket, num_outputs, data_type='<d'):
-    sequence_bytes = struct.calcsize('<I')
-    checksum_bytes = struct.calcsize('<B')
-
-    recv_bytes = sequence_bytes + struct.calcsize(data_type) * num_outputs + checksum_bytes
-    full_data = server_socket.recv(recv_bytes)
-
-    if len(full_data) != recv_bytes:
-        print(f"Data received is shorter than expected: {len(full_data)} instead of {recv_bytes}.")
-        return None
-
-    # Extract and validate sequence number
-    sequence_received, = struct.unpack('<I', full_data[:sequence_bytes])
-
-    # sequence check here
-
-    print(f"Received sequence number: {sequence_received}")
-
-    # Extract and validate checksum
-    received_checksum, = struct.unpack('<B', full_data[-checksum_bytes:])
-    computed_checksum = compute_checksum(full_data[:-checksum_bytes])
-
-    if received_checksum != computed_checksum:
-        print("Checksum mismatch!")
-        return None
-
-    decoded_values = [round(struct.unpack(data_type, chunk)[0], 2)
-                      for chunk in (full_data[sequence_bytes + i:sequence_bytes + i + struct.calcsize(data_type)]
-                                    for i in range(0, len(full_data) - sequence_bytes - checksum_bytes,
-                                                   struct.calcsize(data_type)))]
-    return decoded_values
-
-
-def request_data(combine):
-    # if pack=True, the data is packed with struct. 8+12 doubles
-    # print(motionplatf_output.read(combine=True, pack=False))
-    return motionplatf_output.read(combine)
-
-
-def save_data_with_timestamp(data):
-    global data_buffer
-
-    try:
-        with data_save_lock:
-            current_timestamp = datetime.datetime.now().timestamp()  # get UNIX timestamp including fractional seconds
-            # Convert the float timestamp to a format that retains the microsecond precision
-            # (e.g. multiply by 1e6 and cast to an integer)
-            microsecond_timestamp = int(current_timestamp * 1e6)
-
-            # append the timestamp to the data
-            timestamped_data = struct.pack('<Q', microsecond_timestamp) + data  # Q is for an unsigned long
-            data_buffer.append(timestamped_data)
-
-            if len(data_buffer) >= BUFFER_SIZE:
-                with open(file_name, 'ab') as f:
-                    for value in data_buffer:
-                        f.write(value)
-                print("saved data to file...")
-                data_buffer.clear()
-                return True
-    except Exception as e:
-        print(f"Error when saving data: {e}")
-        return False
-
-
-def save_remaining_data(entry_size=20):
-    # If there's remaining data in the buffer, save it to file
-    if data_buffer:
-        with open(file_name, 'ab') as f:
-            for value in data_buffer:
-                missing_values = entry_size - (len(value) // 8 - 1)  # subtract 1 for the timestamp
-                value += struct.pack('<{}d'.format(missing_values), *([0.0] * missing_values))  # 0.0 doubles
-                f.write(value)
-        data_buffer.clear()
-        print("\nSaved remaining data. Printing it in couple seconds...")
-
-
-# The code loops here, should be made better in the future
-def client_handler(client_socket, addr, num_inputs, num_outputs, is_mevea):
-    # is is_mevea needed anymore?
-    try:
-        while True:
-            # Send data to Excavator
-            controller_data = request_data(combine=True)
-            packed_controller_data = pack_data(controller_data)
-
-            if controller_data is None:
-                print("No controller data available!")
-                break
-
-            if is_mevea == 0:
-                if num_inputs is None:
-                    send_success = send_keep_alive(client_socket)
+        try:
+            while True:
+                self.client_socket, self.addr = self.server_socket.accept()
+                # connected, do the handshake
+                if self.handshake():
+                    # handshake successful, start the mainloop
+                    self.mainloop()
                 else:
-                    send_success = send_data(client_socket, packed_controller_data)
+                    break
+        except Exception as e:
+            print(f"\nSocket connection Error: {e}")
+        finally:
+            if self.server_socket:
+                self.server_socket.close()
 
-                # data saving disabled for now
-                # save_data_with_timestamp(data_for_excavator)  # Save the inputs data
+    def construct_str_format(self):
+        # very simple for now haha
+        return self.endian_specifier + self.format_type * self.num_inputs
+
+    def read_data_file(self):
+        # '<Q20d' timestamp integer + 20 input doubles. Little endian
+        str_format = self.construct_str_format()
+        data_size = struct.calcsize(str_format)
+
+        if not os.path.exists(file_path):
+            print(f"Error: File '{file_path}' does not exist.")
+            return
+
+        with open(file_path, 'rb') as f:
+            while True:
+                packed_data = f.read(data_size)
+                if not packed_data:
+                    break
+
+                data = struct.unpack(str_format, packed_data)
+                unix_time = data[0]
+                values = data[1:]
+
+                print(f"Unix time: {unix_time}, Values: {values}")
+
+    def pack_data(self, data):
+        packed_data = struct.pack(self.endian_specifier + self.format_type * len(data), *data)
+        return packed_data
+
+    def send_data(self, packed_data):
+        try:
+            sequence_data = struct.pack('<I', self.sequence_number)
+            packed_values = sequence_data + packed_data
+
+            checksum = self.compute_checksum(packed_data)
+            packed_values += struct.pack('<B', checksum)
+
+            self.client_socket.send(packed_data)
+
+            self.sequence_number += 1
+            return True
+        # make better when you have time
+        except Exception as e:
+            print(f"send data exception: {e}")
+            return False
+
+    def send_keep_alive(self):
+        try:
+            self.client_socket.send(b'\x00')
+            return True
+        # make better when you have time
+        except Exception as e:
+            print(f"Failed to send keep-alive signal: {e}")
+            return False
+
+    def send_start_flag(self):
+        # tell the excavator to start running
+        pass
+
+    def send_stop_flag(self):
+        # tell the excavator to stop running
+        pass
+
+    def start_data_recording(self):
+        # start recording the motionplaft outputs
+        pass
+
+    def stop_data_recording(self):
+        # stop recording the motionplatf outputs
+        self.save_remaining_data()
+        pass
+
+    def receive_keep_alive(self):
+        # just receive the keep alive
+        try:
+            keep_alive = self.client_socket.recv(1)
+            if len(keep_alive) == 1:
+                return True, None
+            else:
+                print("Lost keep-alive signal.")
+                return False, None
+        except Exception as e:
+            print(f"Error receiving keep-alive signal: {e}")
+            return False, None
+
+    def receive_data(self):
+        sequence_bytes = struct.calcsize('<I')
+        checksum_bytes = struct.calcsize('<B')
+
+        recv_bytes = sequence_bytes + struct.calcsize(data_type) * self.num_outputs + checksum_bytes
+        full_data = self.client_socket.recv(recv_bytes)
+
+        if len(full_data) != recv_bytes:
+            print(f"Data received is shorter than expected: {len(full_data)} instead of {recv_bytes}.")
+            return None
+
+        # Extract and validate sequence number
+        sequence_received, = struct.unpack('<I', full_data[:sequence_bytes])
+        print(f"Received sequence number: {sequence_received}")
+
+        # Extract and validate checksum
+        received_checksum, = struct.unpack('<B', full_data[-checksum_bytes:])
+        computed_checksum = self.compute_checksum(full_data[:-checksum_bytes])
+
+        if received_checksum != computed_checksum:
+            print("Checksum mismatch!")
+            return None
+
+        decoded_values = [round(struct.unpack(data_type, chunk)[0], 2)
+                          for chunk in (full_data[sequence_bytes + i:sequence_bytes + i + struct.calcsize(data_type)]
+                                        for i in range(0, len(full_data) - sequence_bytes - checksum_bytes,
+                                                       struct.calcsize(data_type)))]
+        return decoded_values
+
+    def request_data(self):
+        return self.motionplatf_output.read(combine=True)
+
+    def save_data_with_timestamp(self, data):
+        try:
+            with self.data_save_lock:
+                current_timestamp = datetime.datetime.now().timestamp()
+                microsecond_timestamp = int(current_timestamp * 1e6)
+
+                timestamped_data = struct.pack('<Q', microsecond_timestamp) + data
+                self.data_buffer.append(timestamped_data)
+
+                if len(self.data_buffer) >= BUFFER_SIZE:
+                    with open(file_path, 'ab') as f:
+                        for value in self.data_buffer:
+                            f.write(value)
+                    print("saved data to file...")
+                    self.data_buffer.clear()
+                    return True
+        except Exception as e:
+            print(f"Error when saving data: {e}")
+            return False
+
+    def save_remaining_data(self):
+        # If there's remaining data in the buffer, save it to file
+        if self.data_buffer:
+            with open(file_path, 'ab') as f:
+                for value in self.data_buffer:
+                    missing_values = self.num_inputs - (len(value) // 8 - 1)  # subtract 1 for the timestamp
+                    value += struct.pack('<{}d'.format(missing_values), *([0.0] * missing_values))  # 0.0 doubles
+                    f.write(value)
+            self.data_buffer.clear()
+            print("\nSaved remaining data.")
+
+    def handle_data_transmission(self, packed_controller_data):
+        if self.num_inputs is None:
+            return self.send_keep_alive()
+        else:
+            return self.send_data(packed_controller_data)
+
+    def handle_data_reception(self):
+        if self.num_outputs is None:
+            return self.receive_keep_alive()
+        else:
+            return self.receive_data()
+
+    def mainloop(self):
+        print("Starting mainloop...")
+        sleep(3)
+        try:
+            while True:
+                controller_data = self.request_data()
+                if controller_data is None:
+                    print("No controller data available!")
+                    break
+
+                packed_controller_data = self.pack_data(controller_data)
+                send_success = self.handle_data_transmission(packed_controller_data)
                 if not send_success:
                     break
 
-                # Receive response data from Excavator
-                if num_outputs is None:
-                    recv_success, received_data = receive_keep_alive(client_socket)
-                else:
-                    recv_success, received_data = receive_data(client_socket, num_outputs)
-                    pass
-
-                sleep(loop_delay)
-
+                recv_success, received_data = self.handle_data_reception()
                 if not recv_success:
                     break
 
-    except Exception as e:
-        print(f"\nClient handler Error with {addr}: {e}")
-        client_socket.close()
-    finally:
-        # data saving disabled for now
-        # save_remaining_data()
-        client_socket.close()
-        sleep(3)
+                # things could happen here...
+                sleep(loop_delay)
 
-        # '<Q20d' timestamp integer + 20 input doubles. Little endian
+        except Exception as e:
+            print(f"\nClient handler Error with {self.addr}: {e}")
+        finally:
+            self.client_socket.close()
+            # add other cleanups!!!!!
+            sleep(3)
+            self.read_data_file()
 
-        read_bin.read(file_path=file_name, format_str='<Q20d')
-        quit()
+    def handshake(self):
+        try:
+            data = self.client_socket.recv(12)  # 3x4 bytes
+            decoded_data = struct.unpack('<3i', data)
 
+            self.is_mevea = decoded_data[0]
+            self.num_outputs = decoded_data[1]
+            self.num_inputs = decoded_data[2]
+            # etc etc add self to rest
 
-def handshake(server_socket, addr):
-    try:
-        data = server_socket.recv(12)  # 3x4 bytes
-        decoded_data = struct.unpack('<3i', data)
+            if self.is_mevea == 0:
+                print(f"Handshake received from Excavator ({self.addr}) with {self.num_inputs} inputs and {self.num_outputs} outputs.")
 
-        is_mevea = decoded_data[0]
-        num_outputs = decoded_data[1]
-        num_inputs = decoded_data[2]
+            elif self.is_mevea == 1:
+                print(f"Handshake received from Mevea ({self.addr}) with {self.num_inputs} inputs and {self.num_outputs} outputs.")
 
-        if is_mevea == 0:
-            print(f"Handshake received from Excavator ({addr}) with {num_inputs} inputs and {num_outputs} outputs.")
+            elif self.is_mevea > 1:
+                print(f"Unknown handshake received from {self.addr} with {self.num_inputs} inputs and {self.num_outputs} outputs.")
+                return False
 
-        elif is_mevea == 1:
-            print(f"Handshake received from Mevea ({addr}) with {num_inputs} inputs and {num_outputs} outputs.")
+            response = struct.pack('<3i', self.is_mevea, self.num_inputs, self.num_outputs)
+            self.client_socket.send(response)
+            print(f"Handshake done with Address: {self.addr}\n")
 
-        elif is_mevea > 1:
-            print(f"Unknown handshake received from {addr} with {num_inputs} inputs and {num_outputs} outputs.")
-            server_socket.close()  # Close the socket to end the connection
-            return False, None, None, None
+        except socket.timeout:
+            print(f"Handshake timeout with {self.addr}")
+            return False
+        except Exception as e:
+            print(f"\nHandshake Error with {self.addr}: {e}")
+            return False
 
-        response = struct.pack('<3i', is_mevea, num_inputs, num_outputs)
-        server_socket.send(response)
-        print(f"Handshake done with Address: {addr}\n")
-
-    except socket.timeout:
-        print(f"Handshake timeout with {addr}")
-        return False, None, None, None
-    except Exception as e:
-        print(f"\nHandshake Error with {addr}: {e}")
-        return False, None, None, None
-
-    # Convert 0 to None
-    if num_outputs == 0:
-        num_outputs = None
-    if num_inputs == 0:
-        num_inputs = None
-
-    return True, num_inputs, num_outputs, is_mevea
-
-
-def main():
-    try:
-        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        server_socket.bind((host, port))
-
-        server_socket.listen(1)  # Only Excavator expected now
-        print(f"\nServer listening on {host}:{port}")
-
-        while True:
-            client_socket, addr = server_socket.accept()
-            print(f"\nConnected to {addr}")
-
-            handshake_success, num_inputs, num_outputs, is_mevea = handshake(client_socket, addr)
-            if handshake_success:
-                input("send any key to start the simulation loop...")
-
-                client_handler(client_socket, addr, num_inputs, num_outputs, is_mevea)
-
-            client_socket.close()
-
-    except Exception as e:
-        print(f"\nSocket connection Error: {e}")
+        # Convert 0 to None
+        self.num_outputs = None if self.num_outputs == 0 else self.num_outputs
+        self.num_inputs = None if self.num_inputs == 0 else self.num_inputs
+        return True
 
 
 if __name__ == "__main__":
-    # Clear the file
     try:
-        with open(file_name, 'wb') as file:
+        with open(file_path, 'wb') as file:
             pass
     except Exception as e:
         pass
 
-    main()
+    client = MotionPlatformClient(simulation_mode=True)
+    client.run_server()
