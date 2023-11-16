@@ -9,6 +9,7 @@ file_path = "log/motionplatf_data.bin"
 
 BUFFER_SIZE = 100
 
-#host = '10.214.5.110'
-host = '10.214.3.13'
+# host = '10.214.5.110'
+# host = '10.214.3.13'
+host = '127.0.0.1'
 port = 5111

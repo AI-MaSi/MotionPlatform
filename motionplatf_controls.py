@@ -34,16 +34,14 @@ class DataOutput:
         self.simulation_mode = simulation_mode
         self.decimals = decimals
 
-        # Use the constant NIDAQMX_AVAILABLE to check availability
-        if not self.simulation_mode and NIDAQMX_AVAILABLE:
-            self.init_nidaqmx()
-        elif not self.simulation_mode and not NIDAQMX_AVAILABLE:
-            #raise ei ajureita!!!!
-            print("No NiDAQ API available!")
+        if not self.simulation_mode:
+            if NIDAQMX_AVAILABLE:
+                self.init_nidaqmx()
+            else:
+                raise NiDAQmxNotAvailableError("NiDAQmx is not available but required for non-simulation mode.")
         elif self.simulation_mode:
             print("Simulated values selected! These are only for testing purposes")
-            print(f"Ai channels: {NUM_AI_CHANNELS} Di channels: {NUM_DI_CHANNELS}")
-
+            print(f"Simulating {NUM_AI_CHANNELS} analog channels and {NUM_DI_CHANNELS} digital channels!")
 
     def init_nidaqmx(self):
         try:
@@ -85,14 +83,12 @@ class DataOutput:
             print(f"Initialized Motion Platform joysticks!"
                   f" Ai channels: {NUM_AI_CHANNELS} Di channels: {NUM_DI_CHANNELS}")
 
-            #return NUM_AI_CHANNELS, NUM_DI_CHANNELS
-
 
         except nidaqmx.errors.DaqError as e:
-            print(f"Failed to initialize NiDAQ: {e}")
-
+            raise NiDAQmxInitializationError(f"Failed to initialize NiDAQ: {e}")
         except Exception as e:
-            print(f"Unknown error. Are NiDAQ drivers installed?: {e}")
+            raise NiDAQmxInitializationError(f"Unknown error. Are NiDAQ drivers installed?: {e}")
+
 
     def read(self, combine=True):
         ai_channel_data = []
@@ -138,3 +134,12 @@ class DataOutput:
     def __del__(self):
         self.close_tasks()
         print("Tasks terminated safely :)")
+
+class NiDAQmxInitializationError(Exception):
+    pass
+
+class NiDAQmxReadError(Exception):
+    pass
+
+class NiDAQmxNotAvailableError(Exception):
+    pass

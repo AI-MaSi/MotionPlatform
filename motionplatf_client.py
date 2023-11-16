@@ -16,7 +16,6 @@ class MotionPlatformClient:
         self.data_save_lock = threading.Lock()
         self.endian_specifier = data_type[0]  # Little-endian
         self.format_type = data_type[1:]  # Doubles
-        self.motionplatf_output = motionplatf_controls.DataOutput(simulation_mode, decimals=3)
 
         self.server_socket = None
         self.client_socket = None
@@ -26,6 +25,13 @@ class MotionPlatformClient:
         self.num_outputs = None
         self.data_buffer = []
         self.sequence_number = 0
+
+        # Initializing joysticks
+        try:
+            self.motionplatf_output = motionplatf_controls.DataOutput(simulation_mode, decimals=3)
+        except motionplatf_controls.NiDAQmxInitializationError as e:
+            self.motionplatf_output = None
+            raise e
 
     @staticmethod
     def compute_checksum(data):
@@ -45,14 +51,15 @@ class MotionPlatformClient:
         print(f"\nServer listening on {host}:{port}")
 
         try:
-            while True:
-                self.client_socket, self.addr = self.server_socket.accept()
-                # connected, do the handshake
-                if self.handshake():
-                    # handshake successful, start the mainloop
-                    self.mainloop()
-                else:
-                    break
+            # while True:
+            self.client_socket, self.addr = self.server_socket.accept()
+            # connected, do the handshake
+            if self.handshake():
+                # handshake successful, start the mainloop
+                self.mainloop()
+            else:
+                # break
+                pass
         except Exception as e:
             print(f"\nSocket connection Error: {e}")
         finally:
@@ -85,6 +92,7 @@ class MotionPlatformClient:
                 print(f"Unix time: {unix_time}, Values: {values}")
 
     def pack_data(self, data):
+        #print(self.endian_specifier + self.format_type * len(data), *data)
         packed_data = struct.pack(self.endian_specifier + self.format_type * len(data), *data)
         return packed_data
 
@@ -96,8 +104,9 @@ class MotionPlatformClient:
             checksum = self.compute_checksum(packed_data)
             packed_values += struct.pack('<B', checksum)
 
-            self.client_socket.send(packed_data)
+            self.client_socket.send(packed_values)
 
+            print(self.sequence_number)
             self.sequence_number += 1
             return True
         # make better when you have time
@@ -225,6 +234,7 @@ class MotionPlatformClient:
         try:
             while True:
                 controller_data = self.request_data()
+                sleep(1)
                 if controller_data is None:
                     print("No controller data available!")
                     break
@@ -235,6 +245,7 @@ class MotionPlatformClient:
                     break
 
                 recv_success, received_data = self.handle_data_reception()
+                sleep(1)
                 if not recv_success:
                     break
 
