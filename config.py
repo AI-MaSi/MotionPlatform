@@ -33,7 +33,7 @@ ai_channels = [
                 ("Dev2/ai7", "ai7")  # left pedal
             ]
 
-loop_delay = 2
+loop_delay = 0.02
 
 file_path = "log/motionplatf_data.bin"
 

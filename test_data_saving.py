@@ -1,3 +1,7 @@
+# this scripts just reads the data and saves it with struct.
+# might be useful for testing
+
+
 import struct
 import datetime
 from time import sleep
@@ -58,7 +62,6 @@ class MotionPlatformClient:
     def read_data_file(self):
         format_str = self.construct_format_string()
         data_size = struct.calcsize(format_str)
-        print(data_size)
 
         if not os.path.exists(file_path):
             print(f"Error: File '{file_path}' does not exist.")
@@ -85,24 +88,21 @@ class MotionPlatformClient:
 
     def pack_data(self, data):
         # packs the values from the joysticks as doubles
-        # '<(num_inputs)*d'
         packed_data = struct.pack(self.endian_specifier + self.format_type * len(data), *data)
         return packed_data
 
     def request_data(self):
-        # the data looks like this(values are random between -1...1):
-        # [-0.876, -0.996, 0.017, -0.589, 0.444, 0.598, 0.149, 0.617, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 0.0, 1.0]
         return self.motionplatf_output.read(combine=True)
 
 
     def add_checks(self, packed_data):
         # add seq number
-        sequence_data = struct.pack('<I', self.sequence_number)
+        sequence_data = struct.pack((self.endian_specifier + 'I'), self.sequence_number)
         packed_values = sequence_data + packed_data
 
         # add checksum
         checksum = self.compute_checksum(packed_data)
-        packed_values += struct.pack('<B', checksum)
+        packed_values += struct.pack((self.endian_specifier + 'B'), checksum)
 
         # <I20dB
 
@@ -115,7 +115,7 @@ class MotionPlatformClient:
             current_timestamp = datetime.datetime.now().timestamp()
             microsecond_timestamp = int(current_timestamp * 1e6)
 
-            timestamped_data = struct.pack('<Q', microsecond_timestamp) + packed_data
+            timestamped_data = struct.pack((self.endian_specifier + 'Q'), microsecond_timestamp) + packed_data
             self.data_buffer.append(timestamped_data)
 
     def save_buffer(self):
@@ -148,28 +148,21 @@ class MotionPlatformClient:
         self.clear_file()
         print(self.construct_format_string())
 
-        while True:
-            try:
-                controller_data = self.request_data()
-                print(controller_data)
+        for i in range(100):
+            controller_data = self.request_data()
+            print(controller_data)
+            packed_data = self.pack_data(controller_data)
+            final_data = self.add_checks(packed_data)
+            self.add_data_to_buffer(final_data)
 
+            # check buffer length, and save to file if needed
+            if len(self.data_buffer) >= BUFFER_SIZE:
+                self.save_buffer()
 
-                packed_data = self.pack_data(controller_data)
+        self.save_remaining_data()
+        sleep(2)
+        self.read_data_file()
 
-                final_data = self.add_checks(packed_data)
-
-                self.add_data_to_buffer(final_data)
-
-                # check buffer length, and save to file if needed
-                if len(self.data_buffer) >= BUFFER_SIZE:
-                    self.save_buffer()
-
-                sleep(1)
-            except KeyboardInterrupt:
-                self.save_remaining_data()
-                sleep(2)
-                self.read_data_file()
-                break
 
 
 if __name__ == "__main__":
