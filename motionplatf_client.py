@@ -40,6 +40,14 @@ class MotionPlatformClient:
             checksum ^= byte
         return checksum
 
+    @staticmethod
+    def clear_file():
+        # try:
+        with open(file_path, 'wb') as file:
+            pass
+        # except Exception as e:
+            # pass
+
     def setup_server(self):
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -47,33 +55,39 @@ class MotionPlatformClient:
         self.server_socket.listen(1)
 
     def run_server(self):
+        # error checking?
         self.setup_server()
         print(f"\nServer listening on {host}:{port}")
 
         try:
-            # while True:
             self.client_socket, self.addr = self.server_socket.accept()
             # connected, do the handshake
-            if self.handshake():
-                # handshake successful, start the mainloop
-                self.mainloop()
-            else:
-                # break
-                pass
+            return self.handshake()
+
+        # better exceptions when you have time!
         except Exception as e:
             print(f"\nSocket connection Error: {e}")
-        finally:
-            if self.server_socket:
-                self.server_socket.close()
 
-    def construct_str_format(self):
-        # very simple for now haha
-        return self.endian_specifier + self.format_type * self.num_inputs
+    def close_server(self):
+        if self.server_socket:
+            self.server_socket.close()
+            print("Socket closed successfully!")
+        else:
+            print("something wrong has happened somewhere")
+
+    def construct_format_string(self):
+        # '<QI20dB'
+        # '<'  Little-endian
+        # 'Q' 8 byte integer (UNIX-timestamp)
+        # 'I'  Unsigned int (sequence number) 4 bytes
+        # '20d'  20 doubles (joystick data) 20*8 bytes
+        # 'B'  Unsigned char (checksum) 1 byte
+        return self.endian_specifier + 'Q' + 'I' + self.format_type * self.num_inputs + 'B'
 
     def read_data_file(self):
-        # '<Q20d' timestamp integer + 20 input doubles. Little endian
-        str_format = self.construct_str_format()
-        data_size = struct.calcsize(str_format)
+        format_str = self.construct_format_string()
+        data_size = struct.calcsize(format_str)
+        print(data_size)
 
         if not os.path.exists(file_path):
             print(f"Error: File '{file_path}' does not exist.")
@@ -85,25 +99,37 @@ class MotionPlatformClient:
                 if not packed_data:
                     break
 
-                data = struct.unpack(str_format, packed_data)
-                unix_time = data[0]
-                values = data[1:]
+                # Unpack the data
+                data = struct.unpack(format_str, packed_data)
 
-                print(f"Unix time: {unix_time}, Values: {values}")
+                # Extract the sequence number, Unix time, checksum, and values
+                sequence_number = data[0]
+                unix_time = data[1]
+                checksum = data[-1]  # Checksum is the last byte
+                values = data[2:-1]  # Values are between Unix time and checksum
+
+                print(
+                    f"Sequence number: {sequence_number}, Unix time: {unix_time}, "
+                    f"Checksum: {checksum}, Values: {values}")
 
     def pack_data(self, data):
-        #print(self.endian_specifier + self.format_type * len(data), *data)
+        # packs the values from the joysticks as doubles
+        # '<(num_inputs)*d'
         packed_data = struct.pack(self.endian_specifier + self.format_type * len(data), *data)
         return packed_data
 
     def send_data(self, packed_data):
+        # send full control data with added checks
         try:
+            # add seq number
             sequence_data = struct.pack('<I', self.sequence_number)
             packed_values = sequence_data + packed_data
 
+            # add checksum
             checksum = self.compute_checksum(packed_data)
             packed_values += struct.pack('<B', checksum)
 
+            # <I20dB
             self.client_socket.send(packed_values)
 
             print(self.sequence_number)
@@ -113,6 +139,10 @@ class MotionPlatformClient:
         except Exception as e:
             print(f"send data exception: {e}")
             return False
+
+    def send_handshake(self, packed_handshake):
+        # only send the handshake without adding anything
+        self.client_socket.send(packed_handshake)
 
     def send_keep_alive(self):
         try:
@@ -139,6 +169,10 @@ class MotionPlatformClient:
         # stop recording the motionplatf outputs
         self.save_remaining_data()
         pass
+
+    def receive_handshake(self):
+        handshake = self.client_socket.recv(12)  # 3x4 bytes
+        return struct.unpack('<3i', handshake)
 
     def receive_keep_alive(self):
         # just receive the keep alive
@@ -185,24 +219,26 @@ class MotionPlatformClient:
     def request_data(self):
         return self.motionplatf_output.read(combine=True)
 
-    def save_data_with_timestamp(self, data):
+    def add_data_to_buffer(self, packed_data):
+        # make better error handling
+        with self.data_save_lock:
+            current_timestamp = datetime.datetime.now().timestamp()
+            microsecond_timestamp = int(current_timestamp * 1e6)
+
+            timestamped_data = struct.pack('<Q', microsecond_timestamp) + packed_data
+            self.data_buffer.append(timestamped_data)
+
+    def save_buffer(self):
+        # save data from buffer to file
         try:
-            with self.data_save_lock:
-                current_timestamp = datetime.datetime.now().timestamp()
-                microsecond_timestamp = int(current_timestamp * 1e6)
-
-                timestamped_data = struct.pack('<Q', microsecond_timestamp) + data
-                self.data_buffer.append(timestamped_data)
-
-                if len(self.data_buffer) >= BUFFER_SIZE:
-                    with open(file_path, 'ab') as f:
-                        for value in self.data_buffer:
-                            f.write(value)
-                    print("saved data to file...")
-                    self.data_buffer.clear()
-                    return True
-        except Exception as e:
-            print(f"Error when saving data: {e}")
+            with open(file_path, 'ab') as f:
+                for value in self.data_buffer:
+                    f.write(value)
+            print("saved data to file...")
+            self.data_buffer.clear()
+            return True
+        except Exception:
+            print("error save buffer testprint")
             return False
 
     def save_remaining_data(self):
@@ -216,11 +252,27 @@ class MotionPlatformClient:
             self.data_buffer.clear()
             print("\nSaved remaining data.")
 
-    def handle_data_transmission(self, packed_controller_data):
+    def handle_data_transmission(self, data):
+        # Check how many inputs there are
         if self.num_inputs is None:
             return self.send_keep_alive()
+
+        # Check if data is already packed or not
+        if isinstance(data, bytes):
+            # Data is already packed
+            packed_data = data
         else:
-            return self.send_data(packed_controller_data)
+            # Data is not packed, so pack it
+            # Assuming data is a tuple or list of 20 doubles
+            if len(data) != self.num_inputs:
+                raise ValueError(f"Data must contain exactly {self.num_inputs}"
+                                 f" doubles, got {len(data)} instead!")
+            packed_data = self.pack_data(data)
+
+        # Send packed data and add it to the buffer
+        send_success = self.send_data(packed_data)
+        self.add_data_to_buffer(packed_data)
+        return send_success
 
     def handle_data_reception(self):
         if self.num_outputs is None:
@@ -229,45 +281,35 @@ class MotionPlatformClient:
             return self.receive_data()
 
     def mainloop(self):
-        print("Starting mainloop...")
-        sleep(3)
-        try:
-            while True:
-                controller_data = self.request_data()
-                sleep(1)
-                if controller_data is None:
-                    print("No controller data available!")
-                    break
+        controller_data = self.request_data()
+        if controller_data is None:
+            # this shouldn't happen as the controller has error checking!
+            print("No controller data available!")
+            return False
 
-                packed_controller_data = self.pack_data(controller_data)
-                send_success = self.handle_data_transmission(packed_controller_data)
-                if not send_success:
-                    break
+        # pack and send controller data
+        send_success = self.handle_data_transmission(controller_data)
 
-                recv_success, received_data = self.handle_data_reception()
-                sleep(1)
-                if not recv_success:
-                    break
+        if not send_success:
+            # I could do something here...
+            return False
 
-                # things could happen here...
-                sleep(loop_delay)
+        # check buffer length, and save to file if needed
+        if len(self.data_buffer) >= BUFFER_SIZE:
+            self.save_buffer()
 
-        except Exception as e:
-            print(f"\nClient handler Error with {self.addr}: {e}")
-        finally:
-            self.client_socket.close()
-            # add other cleanups!!!!!
-            sleep(3)
-            self.read_data_file()
+        # receive data from the excavator. Only "keep alive" for now
+        recv_success, received_data = self.handle_data_reception()
+        if not recv_success:
+            return False
 
     def handshake(self):
         try:
-            data = self.client_socket.recv(12)  # 3x4 bytes
-            decoded_data = struct.unpack('<3i', data)
+            decoded_handshake = self.receive_handshake()
 
-            self.is_mevea = decoded_data[0]
-            self.num_outputs = decoded_data[1]
-            self.num_inputs = decoded_data[2]
+            self.is_mevea = decoded_handshake[0]
+            self.num_outputs = decoded_handshake[1]
+            self.num_inputs = decoded_handshake[2]
             # etc etc add self to rest
 
             if self.is_mevea == 0:
@@ -281,7 +323,7 @@ class MotionPlatformClient:
                 return False
 
             response = struct.pack('<3i', self.is_mevea, self.num_inputs, self.num_outputs)
-            self.client_socket.send(response)
+            self.send_handshake(response)
             print(f"Handshake done with Address: {self.addr}\n")
 
         except socket.timeout:
@@ -296,13 +338,3 @@ class MotionPlatformClient:
         self.num_inputs = None if self.num_inputs == 0 else self.num_inputs
         return True
 
-
-if __name__ == "__main__":
-    try:
-        with open(file_path, 'wb') as file:
-            pass
-    except Exception as e:
-        pass
-
-    client = MotionPlatformClient(simulation_mode=True)
-    client.run_server()
