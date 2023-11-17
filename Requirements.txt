@@ -1,0 +1,9 @@
+Requirements:
+
+Motion platform side:
+- Inputs to be logged into a structured file with time stamps
+- Possibilities to deactivating one or more inputs to prevent unwanted movement (human error)
+
+Excavator:
+- Be able to execute a sequence of movements from the structured file of recorded inputs
+- Save all sensors measurements in a structured file with time stamps including the pressure sensors
