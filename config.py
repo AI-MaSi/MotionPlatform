@@ -1,11 +1,35 @@
 # explain these some day
 
-# <=Little-endian, d=doubles
-# this is just for the joystick data!
-data_type = '<d'
-
 NUM_AI_CHANNELS = 8
 NUM_DI_CHANNELS = 12
+
+local_addr = '127.0.0.1'
+connect_addr = '127.0.0.1'
+port = 5111
+identification_number = 2 # 0 excavator, 1 Mevea, 2 Motion Platform
+inputs = 0
+outputs = NUM_AI_CHANNELS + NUM_DI_CHANNELS
+
+
+file_path = "log/example_data.bin"
+BUFFER_SIZE = 10
+
+# '<QI20DB'
+# '<'  Little-endian
+endian_specifier = '<'
+# 'Q' 8 byte integer (UNIX-timestamp)
+unix_format = 'Q'
+# 'I'  Unsigned int (sequence number) 4 bytes
+sequence_format = 'I'
+# 'i' Signed int (handshake) 4 bytes
+handshake_format = 'i'
+# 'd'  doubles (data) 8 bytes
+data_format = 'd'
+# 'B'  Unsigned char (checksum) 1 byte
+checksum_format = 'B'
+
+# make list from data formats
+
 
 di_channels = [
                 "Dev2/port0/line0",
@@ -35,11 +59,3 @@ ai_channels = [
 
 loop_delay = 0.02
 
-file_path = "log/motionplatf_data.bin"
-
-BUFFER_SIZE = 10
-
-# host = '10.214.5.110'
-# host = '10.214.3.13'
-host = '127.0.0.1'
-port = 5111

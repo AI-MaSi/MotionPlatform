@@ -26,6 +26,8 @@ class MotionPlatformClient:
         self.num_outputs = None
         self.data_buffer = []
         self.sequence_number = 0
+        self.start_flag = None
+        self.record_flag = None
 
         # Initializing joysticks
         try:
@@ -50,10 +52,12 @@ class MotionPlatformClient:
             # pass
 
     def setup_server(self):
-        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.server_socket.bind((host, port))
-        self.server_socket.listen(1)
+        # is this needed?
+        if not self.server_socket:
+            self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self.server_socket.bind((host, port))
+            self.server_socket.listen(1)
 
     def run_server(self):
         # error checking?
@@ -141,8 +145,9 @@ class MotionPlatformClient:
         # <I20dB
         # try except
         self.client_socket.send(final_data)
-        # add packed data to buffer
-        self.add_data_to_buffer(final_data)
+        # add packed data to buffer if record flag is true
+        if self.record_flag:
+            self.add_data_to_buffer(final_data)
         # socketError
         return True
 
@@ -150,26 +155,26 @@ class MotionPlatformClient:
         # only send the handshake without adding anything
         self.client_socket.send(packed_handshake)
 
-    """
-    WIP
     def send_start_flag(self):
         # tell the excavator to start running
-        pass
+        print("set send stop flag to true!")
+        self.start_flag = True
 
     def send_stop_flag(self):
         # tell the excavator to stop running
-        pass
+        print("set send stop flag to fasle!")
+        self.start_flag = False
 
-    def start_data_recording(self):
+    def start_recording_flag(self):
         # start recording the motionplaft outputs
-        pass
+        print("set recording flag to true!")
+        self.record_flag = True
 
-    def stop_data_recording(self):
+    def stop_recording_flag(self):
         # stop recording the motionplatf outputs
+        print("set recording flag to false!")
+        self.record_flag = False
         self.save_remaining_data()
-        pass
-    WIP
-    """
 
     def receive_handshake(self):
         handshake = self.client_socket.recv(12)  # 3x4 bytes
@@ -247,24 +252,27 @@ class MotionPlatformClient:
             print("no overflow(?) data for saving!")
 
     def mainloop(self):
-        # get controller data
-        controller_data = self.request_data()
-        if controller_data is None:
-            # this shouldn't happen as the controller has error checking!
-            print("No controller data available!")
-            return False
+        if self.start_flag:
+            # get controller data
+            controller_data = self.request_data()
+            if controller_data is None:
+                # this shouldn't happen as the controller has error checking!
+                print("No controller data available!")
+                return False
 
-        # handle, pack and send the data
-        # currently only returns true
-        send_success = self.send_data(controller_data)
+            # handle, pack and send the data
+            # currently only returns true
+            send_success = self.send_data(controller_data)
 
-        # check buffer length, and save to file if needed
-        if len(self.data_buffer) >= BUFFER_SIZE:
-            self.save_buffer()
+            # check buffer length, and save to file if needed
+            if len(self.data_buffer) >= BUFFER_SIZE and self.record_flag:
+                self.save_buffer()
 
-        # receive data from the excavator. Only "keep alive" for now
-        # data(successful), True(keep alive), False(failed)
-        return self.receive_data()
+            # receive data from the excavator. Only "keep alive" for now
+            # data(successful), True(keep alive), False(failed)
+            return self.receive_data()
+
+        print("No start flag, skipping loop...")
 
     def handshake(self):
         try:

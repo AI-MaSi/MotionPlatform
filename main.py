@@ -1,38 +1,55 @@
+import threading
 from time import sleep
 import motionplatf_client
 from config import loop_delay
 
-client = motionplatf_client.MotionPlatformClient(simulation_mode=True)
+simulation_mode = True
+client = motionplatf_client.MotionPlatformClient(simulation_mode=simulation_mode)
+
+def handle_buttons():
+    i = 0
+    while True:
+        buttons = client.request_data()
+
+        if buttons[11]:
+            client.send_start_flag()
+
+        if buttons[12]:
+            client.start_recording_flag()
+
+        if buttons[13]:
+            client.send_stop_flag()
+
+        if buttons[14]:
+            client.send_start_flag()
+
+        if buttons[15]:
+            # this would have better stopping
+            break
+
+        sleep(0.02)
 
 def main():
-    # clears the .bin file
     client.clear_file()
-
-    # sets up the server, and makes the handshake with the client
     connected = client.run_server()
     sleep(3)
+
     if connected:
-        # server has connected, you could do stuff here
-        """"
-        while True:
-            # joystick buttons for starting / stopping etc.
-            buttons = client.request_data()
-            print(buttons)
-            sleep(1)
-        """
-        # starts the send / recv loop
-        for i in range(20):
-            # data(successful), None(failed), True(keep alive), False(failed keep alive)
-            client.mainloop()
-            sleep(loop_delay)
+        button_thread = threading.Thread(target=handle_buttons)
+        button_thread.start()
 
-        client.save_remaining_data()
-        client.close_server()
-        client.read_data_file()
+        if simulation_mode:
+            client.stop_recording_flag()
+            client.send_stop_flag()
+            while True:
+                # do mainloop stuff here
+                client.mainloop()
+                sleep(1)
 
-
-
-
+        button_thread.join()
 
 if __name__ == "__main__":
     main()
+    client.save_remaining_data()
+    client.close_server()
+    client.read_data_file()

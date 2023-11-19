@@ -9,10 +9,7 @@
 # combine, make the code return values separated (ai, di) or combined (aidi)
 
 import random
-from config import NUM_AI_CHANNELS, NUM_DI_CHANNELS, data_type, ai_channels, di_channels
-
-endian_specifier = data_type[0]
-format_type = data_type[1:]
+from config import NUM_AI_CHANNELS, NUM_DI_CHANNELS, ai_channels, di_channels
 
 try:
     import nidaqmx
