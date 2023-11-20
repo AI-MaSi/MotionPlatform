@@ -38,19 +38,18 @@ class MasiSocketManager:
         self.socket_setup_done = None
 
     @staticmethod
-    def compute_checksum(data):
+    def compute_checksum(packed_data):
         checksum = 0
-        for byte in data:
+        for byte in packed_data:
             checksum ^= byte
         return checksum
 
     @staticmethod
     def clear_file():
         # try:
-        with open(file_path, 'wb') as file:
+        with open(file_path, 'wb'):
             pass
-        # except Exception as e:
-            # pass
+        # except (no file error find this):
 
     def setup_socket(self, client_type):
         # add error checking
@@ -64,6 +63,7 @@ class MasiSocketManager:
                 print("Socket configured as a server!")
                 print(f"\nSocket listening on {local_addr}:{port}")
                 self.connected_socket, self.connected_addr = self.local_socket.accept()
+                print(f"Connected with {self.connected_addr}, {self.connected_socket}")
                 self.socket_setup_done = True
                 return self.socket_setup_done
 
@@ -101,6 +101,7 @@ class MasiSocketManager:
         return endian_specifier + unix_format + sequence_format + data_format * self.recvd_num_inputs + checksum_format
 
     def read_data_file(self):
+        # this differs from recv_bytes with added timestamp
         format_str = self.construct_format_string()
         data_size = struct.calcsize(format_str)
 
@@ -162,7 +163,7 @@ class MasiSocketManager:
         # try except socketError
         self.connected_socket.send(final_data)
 
-        # add packed data to buffer if record flag is True
+        # add final packed data to buffer if record flag is True
         if self.record_flag:
             self.add_data_to_buffer(final_data)
         return True
@@ -170,8 +171,8 @@ class MasiSocketManager:
     def set_start_flag(self, bool_val):
         # tell the excavator to start running
         # should check if this is bool....
-        print(f"set start flag to {bool}!")
-        self.start_flag = bool
+        print(f"set start flag to {bool_val}!")
+        self.start_flag = bool_val
 
     def set_record_flag(self, bool_val):
         # start recording the motionplaft outputs
@@ -180,8 +181,8 @@ class MasiSocketManager:
         self.record_flag = bool_val
 
     def receive_data(self):
-        if inputs == 0:
-            # just receive the keep alive
+        if self.recvd_num_outputs == 0:
+            # sender has no outputs, just receive the keep alive
             keep_alive = self.connected_socket.recv(1)
             if len(keep_alive) == 1:
                 return True
@@ -198,11 +199,11 @@ class MasiSocketManager:
             return False
 
         # Extract and validate sequence number
-        sequence_received, = struct.unpack('<I', full_data[:self.sequence_bytes])
+        sequence_received, = struct.unpack((endian_specifier + sequence_format), full_data[:self.sequence_bytes])
         print(f"Received sequence number: {sequence_received}")
 
         # Extract and validate checksum
-        received_checksum, = struct.unpack('<B', full_data[-self.checksum_bytes:])
+        received_checksum, = struct.unpack((endian_specifier + checksum_format), full_data[-self.checksum_bytes:])
         computed_checksum = self.compute_checksum(full_data[:-self.checksum_bytes])
 
         if received_checksum != computed_checksum:
@@ -222,7 +223,7 @@ class MasiSocketManager:
             current_timestamp = datetime.datetime.now().timestamp()
             microsecond_timestamp = int(current_timestamp * 1e6)
 
-            timestamped_data = struct.pack((endian_specifier + 'Q'), microsecond_timestamp) + packed_data
+            timestamped_data = struct.pack((endian_specifier + unix_format), microsecond_timestamp) + packed_data
             self.data_buffer.append(timestamped_data)
             print("TESTPRINT: added to buffer")
 
@@ -241,7 +242,8 @@ class MasiSocketManager:
             with open(file_path, 'ab') as f:
                 for value in self.data_buffer:
                     missing_values = outputs - (len(value) // 8 - 1)  # subtract 1 for the timestamp
-                    value += struct.pack('<{}d'.format(missing_values), *([0.0] * missing_values))  # 0.0 doubles
+                    # not tested yet!
+                    value += struct.pack((endian_specifier + '{}' + data_format).format(missing_values), *([0.0] * missing_values))  # 0.0 doubles
                     f.write(value)
             self.data_buffer.clear()
             print("\nSaved remaining data.")
@@ -249,61 +251,63 @@ class MasiSocketManager:
             print("no data in buffer to save!")
 
     def handshake(self):
-        # change to server
-        if self.client_type == 'server':
-            print("handshake receive")
-            # receive handshake from the Excavator or Mevea
-            # except AttributeError 'NoneType' object has no attribute 'recv'
-            # packed_handshake = self.connected_socket.recv(12)  # 3x4 bytes
-            packed_handshake = self.connected_socket.recv(12)  # 3x4 bytes
-            self.recvd_id_number, self.recvd_num_outputs, self.recvd_num_inputs = struct.unpack((endian_specifier + 3*handshake_format), packed_handshake)
-            # send back the response handshake
-            response = struct.pack((endian_specifier + 3*handshake_format), identification_number, inputs, outputs)
-            self.connected_socket.send(response)
-
-        elif self.client_type == 'client':
-            #self.is_mevea = identification_number
-            #self.recvd_num_outputs = outputs
-            #self.recvd_num_inputs = inputs
-
-            # send the response handshake
-            response = struct.pack((endian_specifier + 3*handshake_format), identification_number, inputs, outputs)
-            self.local_socket.send(response)
-            print("handshake send!")
-
-            # receive handshake from the Excavator or Mevea
-            # except AttributeError 'NoneType' object has no attribute 'recv'
-            packed_handshake = self.local_socket.recv(12)  # 3x4 bytes
-            recvd_id_number, recvd_inputs, recvd_outputs = struct.unpack((endian_specifier + 3*handshake_format), packed_handshake)
-
-            if recvd_id_number == identification_number:
-                print("cannot connect two of the same!")
-            if recvd_inputs != outputs:
-                print("input / output mismatch")
-            if recvd_outputs != inputs:
-                print("input / output mismatch")
-
         """
+        Handshake is done so that it will work with Mevea.
+        When the connection is accepted, Mevea will send 3x32bit integers
+        containing [identification number], [number of outputs], [number of inputs].
+
+        User needs to respond to this with [identification number], [number of inputs], [number of outputs]
+        These values need to match!
+        Please note that the response does not directly match the received data! (in / out flipped)
+        """
+
+
+
+        # handle handshake as server
+        if self.client_type == 'server':
+            # receive, then send
+            packed_handshake = self.local_socket.recv(12)  # 3x4 bytes
+
+
+            self.recvd_id_number, self.recvd_num_outputs, self.recvd_num_inputs = struct.unpack((endian_specifier + 3*handshake_format), packed_handshake)
+            # send back the response handshake (in / out flipped)
+            response = struct.pack((endian_specifier + 3 * handshake_format), identification_number, inputs, outputs)
+            self.connected_socket.send(response)    # connected or local???
+
+
+        # handle handshake as client
+        elif self.client_type == 'client':
+            # send, then receive
+            response = struct.pack((endian_specifier + 3 * handshake_format), identification_number, outputs, inputs)
+            self.local_socket.send(response)
+
+            # receive handshake
+            packed_handshake = self.local_socket.recv(12)  # 3x4 bytes
+            self.recvd_id_number, self.recvd_num_outputs, self.recvd_num_inputs = struct.unpack((endian_specifier + 3 * handshake_format), packed_handshake)
+
+
+            # check the handshake
+            # identification number cannot be the same
+            if self.recvd_id_number == identification_number:
+                print("cannot connect two of the same!")
+                # raise
+            # in / out needs to match
+            if self.recvd_num_inputs != outputs or self.recvd_num_outputs != inputs:
+                print("input / output mismatch")
+                # raise
+
+        # let the user know the handshake results
         if self.recvd_id_number == 0:
-            print(f"Handshake received from Excavator ({self.connected_addr}) with {self.num_inputs} inputs and {self.num_outputs} outputs.")
+            print(f"Handshake received from Excavator ({self.connected_addr}) with {self.recvd_num_inputs} inputs and {self.recvd_num_outputs} outputs.")
         elif self.recvd_id_number == 1:
-            print(f"Handshake received from Mevea ({self.connected_addr}) with {self.num_inputs} inputs and {self.num_outputs} outputs.")
+            print(f"Handshake received from Mevea ({self.connected_addr}) with {self.recvd_num_inputs} inputs and {self.recvd_num_outputs} outputs.")
         elif self.recvd_id_number == 2:
-            print(f"Handshake received from Motion Platform ({self.connected_addr}) with {self.num_inputs} inputs and {self.num_outputs} outputs.")
+            print(f"Handshake received from Motion Platform ({self.connected_addr}) with {self.recvd_num_inputs} inputs and {self.recvd_num_outputs} outputs.")
         else:
-            print(f"Unknown handshake received from {self.connected_addr} with {self.num_inputs} inputs and {self.num_outputs} outputs.")
+            print(f"Unknown handshake (id {self.recvd_id_number}) received from {self.connected_addr} with {self.recvd_num_inputs} inputs and {self.recvd_num_outputs} outputs.")
             return False
 
-        #except socket.timeout:
-        # calculate the bytes you are going to receive
-    
-        if inputs >= 0:
-            self.recv_bytes = self.sequence_bytes + struct.calcsize((endian_specifier + data_format)) * inputs + self.checksum_bytes
-        else:
-            # just wanting keep alive
-            self.recv_bytes = self.sequence_bytes + struct.calcsize((endian_specifier + data_format))
-        print(f"Handshake done. Bytes receiving: {self.recv_bytes}")
-        """
+        # calculate how many bytes we are going to receive
         self.recv_bytes = self.sequence_bytes + struct.calcsize(
             (endian_specifier + data_format)) * inputs + self.checksum_bytes
 
