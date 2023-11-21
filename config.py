@@ -19,12 +19,12 @@ BUFFER_SIZE = 10
 endian_specifier = '<'
 # 'Q' 8 byte integer (UNIX-timestamp)
 unix_format = 'Q'
-# 'I'  Unsigned int (sequence number) 4 bytes
-sequence_format = 'I'
+# REMOVED 'I'  Unsigned int (sequence number) 4 bytes
+#sequence_format = 'I'
 # 'i' Signed int (handshake) 4 bytes
 handshake_format = 'i'
 # 'd'  doubles (data) 8 bytes
-data_format = 'd'
+data_format = 'd' # Mevea wants doubles!
 # 'B'  Unsigned char (checksum) 1 byte
 checksum_format = 'B'
 
