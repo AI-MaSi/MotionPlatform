@@ -12,23 +12,18 @@ outputs = NUM_AI_CHANNELS + NUM_DI_CHANNELS
 
 
 file_path = "log/example_data.bin"
-BUFFER_SIZE = 10
+BUFFER_SIZE = 100
 
-# '<QI20DB'
-# '<'  Little-endian
-endian_specifier = '<'
-# 'Q' 8 byte integer (UNIX-timestamp)
-unix_format = 'Q'
-# REMOVED 'I'  Unsigned int (sequence number) 4 bytes
-#sequence_format = 'I'
-# 'i' Signed int (handshake) 4 bytes
-handshake_format = 'i'
-# 'd'  doubles (data) 8 bytes
-data_format = 'd' # Mevea wants doubles!
-# 'B'  Unsigned char (checksum) 1 byte
-checksum_format = 'B'
 
-# make list from data formats
+endian_specifier = '<' # Little-endian
+
+unix_format = 'Q' # 8 byte integer (UNIX-timestamp)
+
+handshake_format = 'i' # Signed int (handshake) 4 bytes
+
+data_format = 'd' # doubles (data) 8 bytes
+
+checksum_format = 'B' # Unsigned char (checksum) 1 byte
 
 
 di_channels = [
@@ -57,5 +52,4 @@ ai_channels = [
                 ("Dev2/ai7", "ai7")  # left pedal
             ]
 
-loop_delay = 0.02
 

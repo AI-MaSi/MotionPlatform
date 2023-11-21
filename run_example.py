@@ -17,9 +17,7 @@ manager = universal_socket_manager.MasiSocketManager()
 
 
 def setup_example():
-    # these could be set in GUI
-    # manager.setup_socket(addr, port, client_type='server')
-
+    # manager.clear_file()
     setup_result = manager.setup_socket(socket_type='server')
     if not setup_result:
         print("could not setup socket!")
@@ -56,6 +54,7 @@ def run_example():
 
         except KeyboardInterrupt:
             manager.close_socket()
+            manager.print_bin_file(num_doubles=20) # reading joystick data, so 12+8 doubles
             return
 
 
