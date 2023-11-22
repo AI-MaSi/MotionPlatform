@@ -3,8 +3,8 @@
 NUM_AI_CHANNELS = 8
 NUM_DI_CHANNELS = 12
 
-local_addr = '127.0.0.1'
-connect_addr = '127.0.0.1'
+local_addr = '10.214.5.160'
+connect_addr = '10.214.3.104'
 port = 5111
 identification_number = 2 # 0 excavator, 1 Mevea, 2 Motion Platform
 inputs = 0
