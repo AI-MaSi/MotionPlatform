@@ -49,12 +49,12 @@ class MasiSocketManager:
 
     @staticmethod
     def print_bin_file(num_doubles):
-        format_str = endian_specifier + unix_format + data_format * num_doubles
+        format_str = endian_specifier + unix_format + data_format * num_doubles + checksum_format
         total_size = struct.calcsize(format_str)
 
         # Add checksum byte if not divisible by 2
-        if total_size % 2 != 0:
-            format_str += checksum_format
+        #if total_size % 2 != 0:
+         #   format_str += checksum_format
 
         # Format string differs from recv_bytes with added timestamp
         print(f"File format is: {str(format_str)}")

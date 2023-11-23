@@ -11,7 +11,7 @@ inputs = 0
 outputs = NUM_AI_CHANNELS + NUM_DI_CHANNELS
 
 
-file_path = "log/example_data.bin"
+file_path = "log/motionplatf_stick_data.bin"
 BUFFER_SIZE = 100
 
 
