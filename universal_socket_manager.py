@@ -37,10 +37,9 @@ class MasiSocketManager:
 
     @staticmethod
     def clear_file():
-        # try:
         with open(file_path, 'wb'):
             pass
-        # except (no file error find this):
+        print("cleared file!")
 
     @staticmethod
     def pack_data(data):
@@ -109,7 +108,6 @@ class MasiSocketManager:
         if self.local_socket:
             self.local_socket.close()
             print("Socket closed successfully!")
-            # self.save_remaining_data()
         else:
             print("something wrong has happened somewhere")
 

@@ -63,8 +63,9 @@ def run():
             sleep(sleep_time)
         except Exception as e:
             print(e)
-            manager.close_socket()
             manager.print_bin_file(num_doubles=20)
+            manager.close_socket()
+            sleep(1)
             break
 
 
