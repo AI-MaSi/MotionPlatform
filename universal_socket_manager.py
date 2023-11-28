@@ -4,6 +4,7 @@ import datetime
 import threading
 import os
 
+from time import sleep
 
 # using these directly now. Add to __init__ if more flexibility needed
 from config import (file_path, local_addr, port, connect_addr, identification_number,
@@ -39,7 +40,7 @@ class MasiSocketManager:
     def clear_file():
         with open(file_path, 'wb'):
             pass
-        print("cleared file!")
+        print("Cleared file!")
 
     @staticmethod
     def pack_data(data):
@@ -49,15 +50,9 @@ class MasiSocketManager:
     @staticmethod
     def print_bin_file(num_doubles):
         format_str = endian_specifier + unix_format + data_format * num_doubles + checksum_format
-        total_size = struct.calcsize(format_str)
 
-        # Add checksum byte if not divisible by 2
-        #if total_size % 2 != 0:
-         #   format_str += checksum_format
-
-        # Format string differs from recv_bytes with added timestamp
         print(f"File format is: {str(format_str)}")
-
+        sleep(2)
         data_size = struct.calcsize(format_str)
 
         if not os.path.exists(file_path):
@@ -195,12 +190,12 @@ class MasiSocketManager:
         self.data_buffer.clear()
         return True
 
-    def save_remaining_data(self):
+    def save_remaining_data(self, num_doubles):
         # If there's remaining data in the buffer, save it to file
         if self.data_buffer:
             with open(file_path, 'ab') as f:
                 for value in self.data_buffer:
-                    missing_values = outputs - (len(value) // 8 - 1)  # subtract 1 for the timestamp
+                    missing_values = num_doubles - (len(value) // 8 - 1)  # subtract 1 for the timestamp
                     value += struct.pack((endian_specifier + '{}' + data_format).format(missing_values), *([0.0] * missing_values))  # 0.0 doubles
                     f.write(value)
             self.data_buffer.clear()
