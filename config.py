@@ -6,12 +6,12 @@ NUM_DI_CHANNELS = 12
 local_addr = '10.214.5.160'
 connect_addr = '10.214.3.104'
 port = 5111
-identification_number = 2 # 0 excavator, 1 Mevea, 2 Motion Platform
+identification_number = 2 # 0 excavator, 1 Mevea, 2 Motion Platform, more can be added...
 inputs = 0
 outputs = NUM_AI_CHANNELS + NUM_DI_CHANNELS
 
 
-file_path = "log/motionplatf_stick_data.bin"
+file_path = "log/motionplatf_stick_data4.12.bin"
 BUFFER_SIZE = 100
 
 
