@@ -8,9 +8,6 @@
 # arguments in the read-function
 # combine, make the code return values separated (ai, di) or combined (aidi)
 
-import random
-from config import NUM_AI_CHANNELS, NUM_DI_CHANNELS, ai_channels, di_channels
-
 try:
     import nidaqmx
     from nidaqmx.constants import TerminalConfiguration
@@ -18,6 +15,38 @@ try:
     NIDAQMX_AVAILABLE = True
 except ImportError:
     NIDAQMX_AVAILABLE = False
+
+import random
+
+di_channels = [
+    "Dev2/port0/line0",  # right stick rocker up
+    "Dev2/port0/line1",  # right stick rocker down
+    "Dev2/port0/line2",  # right stick button rear
+    "Dev2/port0/line3",  # right stick button bottom
+    "Dev2/port0/line4",  # right stick button top
+    "Dev2/port0/line5",  # right stick button mid
+
+    "Dev2/port0/line6",  # left stick rocker up
+    "Dev2/port0/line7",  # left stick rocker down
+    "Dev2/port1/line0",  # left stick button rear
+    "Dev2/port1/line1",  # left stick button top
+    "Dev2/port1/line2",  # left stick button bottom
+    "Dev2/port1/line3"  # left stick button mid
+]
+
+ai_channels = [
+    ("Dev2/ai0", "ai0"),  # right stick L/R
+    ("Dev2/ai1", "ai1"),  # right stick U/D
+    ("Dev2/ai2", "ai2"),  # right stick rocker
+    ("Dev2/ai3", "ai3"),  # left stick L/R
+    ("Dev2/ai4", "ai4"),  # left stick U/D
+    ("Dev2/ai5", "ai5"),  # left stick rocker
+    ("Dev2/ai6", "ai6"),  # right pedal
+    ("Dev2/ai7", "ai7")  # left pedal
+]
+
+NUM_AI_CHANNELS = len(ai_channels)
+NUM_DI_CHANNELS = len(di_channels)
 
 
 class DataOutput:
