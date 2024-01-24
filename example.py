@@ -1,5 +1,7 @@
+# example, use this to drive around with the excavator
+
 import motionplatf_controls
-import universal_socket_manager
+import universal_connection_manager
 from time import sleep, time
 
 # Frequency of the send/receive loop in Hz

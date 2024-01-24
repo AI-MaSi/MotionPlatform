@@ -258,3 +258,7 @@ class MasiSocketManager:
         # calculate how many bytes we are going to receive
         self.recv_bytes = struct.calcsize((endian_specifier + data_format)) * self.recvd_num_outputs + self.checksum_bytes
         return True
+
+class MasiBluetoothManager:
+    # control for student excavators here!
+    pass
