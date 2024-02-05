@@ -282,6 +282,14 @@ class MasiSocketManager:
             if device_name != "Mevea":
                 recvd_extra_args = self.receive_extra_args(extra_arguments)
 
+        else: # not correct socket-type
+            print("wrong socket type!")
+            return False
+
+        # calculate how many bytes we are going to receive (in drive loop)
+        self.recv_bytes = struct.calcsize(
+            (endian_specifier + data_format)) * self.recvd_num_outputs + self.checksum_bytes
+
         self.identify(device_name, recvd_extra_args)
         return recvd_extra_args
 
