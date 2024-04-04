@@ -50,7 +50,7 @@ NUM_DI_CHANNELS = len(di_channels)
 
 
 class DataOutput:
-    def __init__(self, simulation_mode=False, decimals=3):
+    def __init__(self, simulation_mode=False, decimals=2):
         self.simulation_mode = simulation_mode
         self.decimals = decimals
         self.task_di = None
@@ -93,10 +93,11 @@ class DataOutput:
         if not self.simulation_mode:
             if NIDAQMX_AVAILABLE:
                 try:
+                    # Convert analog input from 0.5-4.5V to -1 to 1
                     ai_channel_data = self.task_ai.read()
                     raw_di_data = self.task_di.read()  # Read the boolean data
                     di_channel_data = [float(value) for value in raw_di_data]  # Convert boolean to float
-                    ai_channel_data = [round((value - 2.5) * 0.5, self.decimals) for value in ai_channel_data]
+                    ai_channel_data = [round((value - 2.5) / 2.0, self.decimals) for value in ai_channel_data]
                 except nidaqmx.errors.DaqError as e:
                     raise NiDAQmxReadError(f"Failed to read data from NiDAQ: {e}")
             else:

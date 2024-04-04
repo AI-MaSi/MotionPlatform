@@ -1,4 +1,5 @@
 # this script can be used to check channel numbers
+# script prints out channel number when used
 import sys
 import os
 from time import sleep
