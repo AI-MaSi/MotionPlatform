@@ -63,7 +63,13 @@ class DataOutput:
                 raise NiDAQmxNotAvailableError("NiDAQmx is not available but required for non-simulation mode.")
         elif self.simulation_mode:
             print("Simulated values selected! These are only for testing purposes")
-            print(f"Simulating {NUM_AI_CHANNELS} analog channels and {NUM_DI_CHANNELS} digital channels!")
+
+            # Prompt the user to confirm they want to proceed
+            proceed = input("Send Y to continue!: ")
+            if proceed.lower() != 'y':
+                raise NiDAQmxInitializationError("Simulation usage not confirmed!")
+            else:
+                print(f"Simulating {NUM_AI_CHANNELS} analog channels and {NUM_DI_CHANNELS} digital channels!")
 
     def init_nidaqmx(self):
         try:

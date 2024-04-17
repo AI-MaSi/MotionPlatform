@@ -6,6 +6,7 @@ import universal_connection_manager
 from time import sleep
 
 
+#addr = '192.168.0.136'
 addr = '127.0.0.1'
 port = 5111
 
@@ -19,29 +20,34 @@ outputs = 20
 
 
 # Frequency of the send/receive loop in Hz
-# 20Hz ~50ms
-# 60Hz ~17ms
+# 20Hz ~50ms        As of 17.4.2024, the ISM330DHCX are set to 26Hz max
+# 50Hz ~20ms.       PWM controlled servos live in this area
+# 60Hz ~17ms        ADCpi max read speed at 14-bit
 # 200Hz ~5ms etc.
-loop_frequency = 1
+loop_frequency = 20
+
+# For saving bandwidth
+# 1-byte signed int goes from -128 to 127
+int_scale = 127
 
 
 # init joysticks in simulation mode
-motionplatf_output = motionplatf_controls.DataOutput(simulation_mode=True)
+motionplatf_output = motionplatf_controls.DataOutput(simulation_mode=False)
 
 
 # init socket
-masi_manager = universal_connection_manager.MasiSocketManager(identification_number, inputs, outputs)
+masi_manager = universal_connection_manager.MasiSocketManager()
 
 
 # set up Motion Platform as client. set connect_addr if client and TCP
-if not masi_manager.setup_socket(addr, port, socket_type='client'):
+if not masi_manager.setup_socket(addr, port, identification_number, inputs, outputs, socket_type='client'):
     raise Exception("could not setup socket!")
 
 # setup done
 
 # when not communicating with Mevea, you are able to send three extra arguments
 # example: send used loop_frequency
-handshake_result, extra_args = masi_manager.handshake(extra_arg1=loop_frequency)
+handshake_result, extra_args = masi_manager.handshake(extra_arg1=loop_frequency, extra_arg2=int_scale, local_datatype='int')
 
 if not handshake_result:
     raise Exception("could not make handshake!")
@@ -49,19 +55,33 @@ if not handshake_result:
 # switcheroo
 masi_manager.tcp_to_udp()
 
-# handshake is done, just wait a while before starting as the Excavator is currently printing debug prints
-#sleep(5)
+sleep(10)
+
+
+def float_to_int(data, scale=int_scale):  # using 1-byte unsigned int, mapped -100 to +100. A bit ghetto
+    int_data = []  # List to store converted integer values
+
+    for value in data:
+        clamped_value = max(-1.0, min(1.0, value))
+        int_value = int(clamped_value * scale)
+        int_data.append(int_value)
+
+    return int_data
 
 
 def run():
-
-
     while True:
         # read values from joysticks. Combine AI (8) and DI (12) data. 20 values to output in total.
         joystick_data = motionplatf_output.read(combine=True)
 
-        masi_manager.send_data(joystick_data)
-        print(f"Sent: {joystick_data}")
+        # to save bandwidth, convert -1...1 floating point numbers (4-8 bytes) to -100...100 ints (1 byte)
+        int_joystick_data = float_to_int(joystick_data)
+
+        masi_manager.send_data(int_joystick_data)
+        print(f"Sent: {int_joystick_data}")
+
+
+
 
         sleep(1/loop_frequency)
 

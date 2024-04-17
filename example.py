@@ -15,7 +15,7 @@ motionplatf_output = motionplatf_controls.DataOutput(simulation_mode=False, deci
 
 
 # init socket
-manager = universal_socket_manager.MasiSocketManager()
+manager = universal_connection_manager.MasiSocketManager()
 
 
 def setup():
@@ -25,7 +25,9 @@ def setup():
     if not setup_result:
         print("could not setup socket!")
         return
-    handshake_result = manager.handshake()
+    # when not communicating with MEvea, you are able to send three extra arguments
+    # example: send desired input threshold
+    handshake_result = manager.handshake(input_treshold=10)
 
     if not handshake_result:
         print("could not make handshake!")
