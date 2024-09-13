@@ -1,20 +1,19 @@
-# Client configuration for the Excavator system
+# Client configuration for the Motion Platform system
 
 # System settings
 simulation: false  # Set to true if running in simulation mode
-inputs: 31  # Note that these values are flipped from the server configuration
-outputs: 20
+control_outputs: 31  # Number of control values to send (e.g., joystick data)
 
 # Network settings
-addr: 'localhost'   # Change this to the IP of the excavator if running on different machines
-control_port: 5000  # controller data port
-sensor_port: 5001   # sensor data port
-socket_type: 'client'
-protocol: 'UDP'
+addr: '192.168.0.190'  # Bind to all available interfaces
+remote_addr: '192.168.0.131'  # Address of the machine running the tester (change if on different machine)
+control_port: 8080  # Port for sending control data
+sensor_port: 8081  # Port for receiving sensor data
+
 
 # Logging
 log_level: 'INFO'
 
 # Performance
 control_frequency: 20  # Hz, how often to send control data
-sensor_frequency: 10  # Hz, how often to send sensor data
+sensor_frequency: 10  # Hz, how often to potentially receive sensor data

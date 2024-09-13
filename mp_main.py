@@ -4,7 +4,6 @@ import yaml
 from control_modules.socket_manager import AsyncSocketManager
 from control_modules import NiDAQ_controller
 
-# Setup logging
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -14,7 +13,6 @@ class MotionPlatformClient:
         self.config = None
         self.load_config(config_path)
 
-        # Create only the control socket manager
         self.control_socket = AsyncSocketManager(
             inputs=None,
             outputs=self.config['control_outputs']
@@ -45,6 +43,8 @@ class MotionPlatformClient:
                 await asyncio.sleep(1 / self.config['control_frequency'])
         except asyncio.CancelledError:
             logger.info("Asyncio task cancelled. Shutting down...")
+        except Exception as e:
+            logger.error(f"An unexpected error occurred: {e}")
         finally:
             self.stop()
 
@@ -62,8 +62,13 @@ class MotionPlatformClient:
 
 async def main():
     client = MotionPlatformClient()
-    await client.setup()
-    await client.run()
+    try:
+        await client.setup()
+        await client.run()
+    except KeyboardInterrupt:
+        logger.info("Keyboard interrupt received. Shutting down...")
+    finally:
+        client.stop()
 
 if __name__ == "__main__":
     asyncio.run(main())
