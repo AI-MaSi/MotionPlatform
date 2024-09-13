@@ -2,7 +2,8 @@
 
 # System settings
 simulation: false  # Set to true if running in simulation mode
-control_outputs: 31  # Number of control values to send (e.g., joystick data)
+outputs: 20  # Number of control values to send (e.g., joystick data)
+inputs: 31  # Number of sensor values to receive
 
 # Network settings
 addr: '192.168.0.190'  # Bind to all available interfaces
