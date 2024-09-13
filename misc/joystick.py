@@ -1,22 +1,23 @@
 # use Motion Platform joysticks as a game controller.
-# uses vJoy
+# uses vJoy:    https://www.vjoy.org/download-for-windows
 
 import sys
 import os
 from time import sleep
+
+from control_modules.NiDAQ_controller import NiDAQJoysticks
 
 current_script_path = os.path.abspath(__file__)
 parent_directory = os.path.dirname(current_script_path)
 grandparent_directory = os.path.dirname(parent_directory)
 sys.path.append(grandparent_directory)
 
-import motionplatf_controls
 import pyvjoy
 
 delay = 0.01
 
 # Initialize MotionPlatform
-motionplatf_output = motionplatf_controls.DataOutput(simulation_mode=False, decimals=3)
+motionplatf_output = NiDAQJoysticks(simulation_mode=False, decimals=3)
 
 
 # Initialize the vJoy device
