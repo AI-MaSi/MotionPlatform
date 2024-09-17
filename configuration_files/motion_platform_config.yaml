@@ -1,20 +1,17 @@
 # Client configuration for the Motion Platform system
 
 # System settings
-simulation: false  # Set to true if running in simulation mode
-outputs: 20  # Number of control values to send (e.g., joystick data)
-inputs: 31  # Number of sensor values to receive
+simulation: True  # Set to true if running in simulation mode
+num_outputs: 20  # Number of control values to send (e.g., joystick data)
 
 # Network settings
-addr: '192.168.0.190'  # Bind to all available interfaces
-remote_addr: '192.168.0.131'  # Address of the machine running the tester (change if on different machine)
-control_port: 8080  # Port for sending control data
-sensor_port: 8081  # Port for receiving sensor data
-
+#server_addr: '192.168.0.131'  # Address of the HTTP server
+server_addr: 'localhost'
+server_port: 8000  # Port for the HTTP server
 
 # Logging
-log_level: 'INFO'
+log_level: 'DEBUG'
 
 # Performance
-control_frequency: 20  # Hz, how often to send control data
-sensor_frequency: 10  # Hz, how often to potentially receive sensor data
+send_frequency: 2  # Hz, how often to send control data
+receive_frequency: 1  # Hz, how often to receive data
