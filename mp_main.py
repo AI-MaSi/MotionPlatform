@@ -5,6 +5,7 @@ import aiohttp
 import time
 import hashlib
 import json
+import struct
 from control_modules import NiDAQ_controller
 
 logging.basicConfig(level=logging.INFO,
@@ -98,7 +99,12 @@ class MotionPlatformClient:
                 "checksum": checksum
             }
 
-            async with self.http_session.post(url, json=payload) as response:
+            json_payload = json.dumps(payload)
+            message_size = len(json_payload)
+            size_header = struct.pack('>I', message_size)
+
+            async with self.http_session.post(url, data=size_header + json_payload.encode(),
+                                              headers={'Content-Type': 'application/octet-stream'}) as response:
                 if response.status == 200:
                     logger.debug(f"Sent control data: {joystick_data}")
                     self.last_sent_data = joystick_data
@@ -113,7 +119,10 @@ class MotionPlatformClient:
         try:
             async with self.http_session.get(url) as response:
                 if response.status == 200:
-                    sensor_data = await response.json()
+                    size_header = await response.content.read(4)
+                    message_size = struct.unpack('>I', size_header)[0]
+                    json_data = await response.content.read(message_size)
+                    sensor_data = json.loads(json_data.decode())
 
                     # Verify timestamp and checksum
                     calculated_checksum = self.calculate_checksum(sensor_data['values'], sensor_data['timestamp'])

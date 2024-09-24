@@ -2,16 +2,16 @@
 
 # System settings
 simulation: True  # Set to true if running in simulation mode
-num_outputs: 20  # Number of control values to send (e.g., joystick data)
+#num_outputs: 20  # Number of control values to send (e.g., joystick data)
 
 # Network settings
-#server_addr: '192.168.0.131'  # Address of the HTTP server
-server_addr: 'localhost'
+server_addr: '192.168.0.131'  # Address of the HTTP server
+#server_addr: 'localhost'
 server_port: 8000  # Port for the HTTP server
 
 # Logging
 log_level: 'DEBUG'
 
 # Performance
-send_frequency: 2  # Hz, how often to send control data
+send_frequency: 1  # Hz, how often to send control data
 receive_frequency: 1  # Hz, how often to receive data
