@@ -2,8 +2,7 @@
 # handshake with TCP, data transmission with UDP
 # drive around with the excavator
 
-from control_modules import NiDAQ_controller
-import universal_connection_manager
+from control_modules import NiDAQ_controller, socket_manager
 from time import sleep
 
 
@@ -25,7 +24,7 @@ outputs = 20
 # 50Hz ~20ms.       PWM controlled servos live in this area
 # 60Hz ~17ms        ADCpi max read speed at 14-bit
 # 200Hz ~5ms etc.
-loop_frequency = 20
+loop_frequency = 20 # hz
 
 # For saving bandwidth
 # 1-byte signed int goes from -128 to 127
@@ -37,7 +36,7 @@ motionplatf_output = NiDAQ_controller.NiDAQJoysticks(simulation_mode=False)
 
 
 # init socket
-socket = universal_connection_manager.MasiSocketManager()
+socket = socket_manager.MasiSocketManager()
 
 
 # set up Motion Platform as client. set connect_addr if client and TCP
@@ -47,7 +46,7 @@ if not socket.setup_socket(addr, port, identification_number, inputs, outputs, s
 # setup done
 
 # when not communicating with Mevea, you are able to send three extra arguments
-# example: send used loop_frequency
+# example: send used loop_frequency for safety, int_scale for bandwidth saving and local_datatype for data type (we are sending integers)
 handshake_result, extra_args = socket.handshake(extra_arg1=loop_frequency, extra_arg2=int_scale, local_datatype='int')
 
 if not handshake_result:
@@ -59,7 +58,7 @@ socket.tcp_to_udp()
 sleep(10)
 
 
-def float_to_int(data, scale=int_scale):  # using 1-byte unsigned int, mapped -100 to +100. A bit ghetto
+def float_to_int(data, scale=int_scale):  # using 1-byte unsigned int, mapped -1 to +1. A bit ghetto but basically works with dinosaur-era networking
     int_data = []  # List to store converted integer values
 
     for value in data:
@@ -76,15 +75,18 @@ def run():
         joystick_data = motionplatf_output.read(combine=True)
 
         # to save bandwidth, convert -1...1 floating point numbers (4-8 bytes) to -100...100 ints (1 byte)
+        # we do the reverse on the receiving end
+        # this is a simple way to save bandwidth, but it limits the precision of the values
         int_joystick_data = float_to_int(joystick_data)
 
         socket.send_data(int_joystick_data)
         print(f"Sent: {int_joystick_data}")
 
 
+        sleep(1/loop_frequency) # rough polling rate
 
 
-        sleep(1/loop_frequency)
+# TODO: Async for send/receive. UDP client 1 for sending, UDP client 2 for receiving
 
 
 if __name__ == "__main__":

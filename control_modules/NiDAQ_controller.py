@@ -12,52 +12,36 @@ try:
 except ImportError:
     NIDAQMX_AVAILABLE = False
 
-di_channels = [
-    "Dev2/port0/line0",  # right stick rocker up
-    "Dev2/port0/line1",  # right stick rocker down
-    "Dev2/port0/line2",  # right stick button rear
-    "Dev2/port0/line3",  # right stick button bottom
-    "Dev2/port0/line4",  # right stick button top
-    "Dev2/port0/line5",  # right stick button mid
-    "Dev2/port0/line6",  # left stick rocker up
-    "Dev2/port0/line7",  # left stick rocker down
-    "Dev2/port1/line0",  # left stick button rear
-    "Dev2/port1/line1",  # left stick button top
-    "Dev2/port1/line2",  # left stick button bottom
-    "Dev2/port1/line3"   # left stick button mid
+# Remember that Python indexes start from 0, so the first channel is 0, not 1
+ai_channels = [
+    ("Dev2/ai0", "ai0"),  # 0. right stick L/R
+    ("Dev2/ai1", "ai1"),  # 1. right stick U/D
+    ("Dev2/ai2", "ai2"),  # 2. right stick rocker
+    ("Dev2/ai3", "ai3"),  # 3. left stick L/R
+    ("Dev2/ai4", "ai4"),  # 4. left stick U/D
+    ("Dev2/ai5", "ai5"),  # 5. left stick rocker
+    ("Dev2/ai6", "ai6"),  # 6. right pedal
+    ("Dev2/ai7", "ai7")   # 7. left pedal
 ]
 
-ai_channels = [
-    ("Dev2/ai0", "ai0"),  # right stick L/R
-    ("Dev2/ai1", "ai1"),  # right stick U/D
-    ("Dev2/ai2", "ai2"),  # right stick rocker
-    ("Dev2/ai3", "ai3"),  # left stick L/R
-    ("Dev2/ai4", "ai4"),  # left stick U/D
-    ("Dev2/ai5", "ai5"),  # left stick rocker
-    ("Dev2/ai6", "ai6"),  # right pedal
-    ("Dev2/ai7", "ai7")   # left pedal
+di_channels = [
+    "Dev2/port0/line0",  # 8. right stick rocker up
+    "Dev2/port0/line1",  # 9. right stick rocker down
+    "Dev2/port0/line2",  # 10. right stick button rear
+    "Dev2/port0/line3",  # 11. right stick button bottom
+    "Dev2/port0/line4",  # 12. right stick button top
+    "Dev2/port0/line5",  # 13. right stick button mid
+    "Dev2/port0/line6",  # 14. left stick rocker up
+    "Dev2/port0/line7",  # 15. left stick rocker down
+    "Dev2/port1/line0",  # 16. left stick button rear
+    "Dev2/port1/line1",  # 17. left stick button top
+    "Dev2/port1/line2",  # 18. left stick button bottom
+    "Dev2/port1/line3"   # 19. left stick button mid
 ]
 
 NUM_AI_CHANNELS = len(ai_channels)
 NUM_DI_CHANNELS = len(di_channels)
 
-class NiDAQStub:
-    def __init__(self, min_voltage=-1.0, max_voltage=1.0, frequency=0.1):
-        self.min_voltage = min_voltage
-        self.max_voltage = max_voltage
-        self.frequency = frequency
-        self.start_time = time.time()
-
-    def generate_wave(self, elapsed_time):
-        amplitude = (self.max_voltage - self.min_voltage) / 2
-        mid_point = self.min_voltage + amplitude
-        return mid_point + amplitude * math.sin(2 * math.pi * self.frequency * elapsed_time)
-
-    def read(self):
-        elapsed_time = time.time() - self.start_time
-        ai_values = [self.generate_wave(elapsed_time) for _ in range(NUM_AI_CHANNELS)]
-        di_values = [random.choice([0.0, 1.0]) for _ in range(NUM_DI_CHANNELS)]
-        return ai_values, di_values
 
 class NiDAQJoysticks:
     def __init__(self, simulation_mode=False, decimals=2):
@@ -68,12 +52,12 @@ class NiDAQJoysticks:
 
         if not self.simulation_mode:
             if NIDAQMX_AVAILABLE:
-                self.init_nidaqmx()
+                self._init_nidaqmx()
             else:
                 print("NiDAQmx is not available but required for non-simulation mode.")
                 return
         elif self.simulation_mode:
-            print("Simulated values selected! These are only for testing purposes")
+            print("Simulated values selected! These are only for testing purposes, do not use as control signal!")
             proceed = input("Input Y to continue!: ")
             if proceed.lower() != 'y':
                 print("Simulation usage not confirmed!")
@@ -82,7 +66,7 @@ class NiDAQJoysticks:
                 print(f"Simulating {NUM_AI_CHANNELS} analog channels and {NUM_DI_CHANNELS} digital channels!")
                 self.stub = NiDAQStub()
 
-    def init_nidaqmx(self):
+    def _init_nidaqmx(self):
         try:
             self.task_di = nidaqmx.Task()
             self.task_ai = nidaqmx.Task()
@@ -120,7 +104,7 @@ class NiDAQJoysticks:
         else:
             return ai_channel_data, di_channel_data
 
-    def close_tasks(self):
+    def _close_tasks(self):
         if not self.simulation_mode:
             if hasattr(self, 'task_ai') and self.task_ai:
                 self.task_ai.stop()
@@ -132,5 +116,24 @@ class NiDAQJoysticks:
             print("Simulated tasks closed!")
 
     def __del__(self):
-        self.close_tasks()
+        self._close_tasks()
         print("Tasks terminated safely :)")
+
+
+class NiDAQStub:
+    def __init__(self, min_voltage=-1.0, max_voltage=1.0, frequency=0.1):
+        self.min_voltage = min_voltage
+        self.max_voltage = max_voltage
+        self.frequency = frequency
+        self.start_time = time.time()
+
+    def generate_wave(self, elapsed_time):
+        amplitude = (self.max_voltage - self.min_voltage) / 2
+        mid_point = self.min_voltage + amplitude
+        return mid_point + amplitude * math.sin(2 * math.pi * self.frequency * elapsed_time)
+
+    def read(self):
+        elapsed_time = time.time() - self.start_time
+        ai_values = [self.generate_wave(elapsed_time) for _ in range(NUM_AI_CHANNELS)]
+        di_values = [random.choice([0.0, 1.0]) for _ in range(NUM_DI_CHANNELS)]
+        return ai_values, di_values
