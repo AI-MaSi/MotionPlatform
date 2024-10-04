@@ -6,10 +6,10 @@ addr = '192.168.0.136'
 port = 5111
 
 identification_number = 2  # 0 excavator, 1 Mevea, 2 Motion Platform, more can be added...
-inputs = 3  # Number of inputs to receive (sensor data)
+inputs = 7  # Number of inputs to receive (sensor data)
 outputs = 20  # Number of outputs to send (joystick data)
 
-control_frequency = 20  # Hz for sending control signals
+control_frequency = 15  # Hz for sending control signals
 sensor_frequency = 5  # Hz for receiving sensor data
 
 int_scale = 127
@@ -57,21 +57,25 @@ async def send_control_signals():
         joystick_data = motionplatf_output.read(combine=True)
         int_joystick_data = float_to_int(joystick_data)
         socket.send_data(int_joystick_data)
-        print(f"Sent: {int_joystick_data}")
+        #print(f"Sent: {int_joystick_data}")
 
         elapsed_time = time.time() - start_time
         await asyncio.sleep(max(0, interval - elapsed_time))
 
 
 async def receive_sensor_data():
+    socket.start_data_recv_thread()
     interval = 1.0 / sensor_frequency
     while True:
         start_time = time.time()
 
         sensor_data = socket.get_latest_received()
         if sensor_data is not None:
-            float_sensor_data = int_to_float(sensor_data)
-            print(f"Received sensor data: {float_sensor_data}")
+            # we are already sending non compressed data
+            # float_sensor_data = int_to_float(sensor_data)
+            # print(f"Received sensor data: {float_sensor_data}")
+
+            print(f"Pressure data: {sensor_data}")
 
         elapsed_time = time.time() - start_time
         await asyncio.sleep(max(0, interval - elapsed_time))
