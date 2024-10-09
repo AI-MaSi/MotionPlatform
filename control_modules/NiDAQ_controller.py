@@ -104,7 +104,7 @@ class NiDAQJoysticks:
         else:
             return ai_channel_data, di_channel_data
 
-    def _close_tasks(self):
+    def __del__(self):
         if not self.simulation_mode:
             if hasattr(self, 'task_ai') and self.task_ai:
                 self.task_ai.stop()
@@ -114,10 +114,6 @@ class NiDAQJoysticks:
                 self.task_di.close()
         else:
             print("Simulated tasks closed!")
-
-    def __del__(self):
-        self._close_tasks()
-        print("Tasks terminated safely :)")
 
 
 class NiDAQStub:
