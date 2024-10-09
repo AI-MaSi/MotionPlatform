@@ -50,9 +50,42 @@ def int_to_float(int_data, decimals=2, scale=int_scale):
 
 
 def process_pedal_input(trigger_value, bumper_value):
+    # Ensure trigger_value is between 0 and 1
+    trigger_value = max(0, min(1, trigger_value))
+
+    # Convert 0..1 range to -1..1 range
+    pedal_value = 2 * trigger_value - 1
+
+    # Flip the value if the bumper is pressed
     if bumper_value:
-        return -trigger_value
-    return trigger_value
+        pedal_value = -pedal_value
+
+    return pedal_value
+
+
+def process_controller_input(controller_value, channel):
+    # Add 1% deadzone to all controller channels
+    deadzone = 0.01
+    if abs(controller_value) < deadzone:
+        return 0.0
+
+    # Special processing for LeftJoystickX
+    if channel == 'LeftJoystickX':
+        # flip LeftJoystickX
+        controller_value = -controller_value
+        
+        # Add 5% deadzone
+        if abs(controller_value) < 0.05:
+            return 0.0
+
+    # Flip LeftJoystickY
+    if channel == 'LeftJoystickY':
+        controller_value = -controller_value
+
+    # Placeholder for other channel processing
+    # Add any additional channel-specific processing here
+
+    return controller_value
 
 
 async def setup_connection():
@@ -84,10 +117,12 @@ async def send_control_signals():
             xbox_value = xbox_data.get(xbox_key, 0)
 
             # Special processing for pedals
-            if xbox_key == 'LeftTrigger':
-                xbox_value = process_pedal_input(xbox_value, xbox_data.get('LeftBumper', 0))
-            elif xbox_key == 'RightTrigger':
-                xbox_value = process_pedal_input(xbox_value, xbox_data.get('RightBumper', 0))
+            if xbox_key in ['LeftTrigger', 'RightTrigger']:
+                bumper_key = 'LeftBumper' if xbox_key == 'LeftTrigger' else 'RightBumper'
+                xbox_value = process_pedal_input(xbox_value, xbox_data.get(bumper_key, 0))
+            else:
+                # Process the controller input for non-pedal inputs
+                xbox_value = process_controller_input(xbox_value, xbox_key)
 
             motion_value = motion_data[motion_index]
 
