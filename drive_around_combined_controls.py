@@ -50,40 +50,35 @@ def int_to_float(int_data, decimals=2, scale=int_scale):
 
 
 def process_pedal_input(trigger_value, bumper_value):
-    # Ensure trigger_value is between 0 and 1
-    trigger_value = max(0, min(1, trigger_value))
+    # Add 5% deadzone to triggers
+    deadzone = 0.05
+    if abs(trigger_value) < deadzone:
+        return 0.0
 
-    # Convert 0..1 range to -1..1 range
-    pedal_value = 2 * trigger_value - 1
+    # Convert to 0..1 range and move midpoint to be at the start of the trigger
+    pedal_value = (trigger_value + 0.5) / 2
 
     # Flip the value if the bumper is pressed
     if bumper_value:
-        pedal_value = -pedal_value
+        pedal_value = - pedal_value
 
     return pedal_value
 
 
 def process_controller_input(controller_value, channel):
-    # Add 1% deadzone to all controller channels
-    deadzone = 0.01
+    # flip all channels
+    controller_value = -controller_value
+
+    # Add 8% deadzone to all controller channels
+    deadzone = 0.08
     if abs(controller_value) < deadzone:
         return 0.0
 
     # Special processing for LeftJoystickX
     if channel == 'LeftJoystickX':
-        # flip LeftJoystickX
-        controller_value = -controller_value
-        
-        # Add 5% deadzone
-        if abs(controller_value) < 0.05:
+        # Add 25% deadzone
+        if abs(controller_value) < 0.25:
             return 0.0
-
-    # Flip LeftJoystickY
-    if channel == 'LeftJoystickY':
-        controller_value = -controller_value
-
-    # Placeholder for other channel processing
-    # Add any additional channel-specific processing here
 
     return controller_value
 
