@@ -6,7 +6,7 @@ from control_modules import socket_manager, joystick_module, NiDAQ_controller
 
 # TODO: Use config file for settings
 
-addr = '192.168.0.136'
+addr = '192.168.0.132'
 port = 5111
 
 identification_number = 69  # 0 excavator, 1 Mevea, 2 Motion Platform, more can be added...

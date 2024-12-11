@@ -80,7 +80,7 @@ class XboxController:
 
     def read(self):
         if not self._connected:
-            print("[Warning] Controller is not connected! (you might need to press any button to connect)")
+            #print("[Warning] Controller is not connected! (you might need to press any button to connect)")
             self.reset_values()
         return {
             'LeftJoystickY': self.LeftJoystickY,
