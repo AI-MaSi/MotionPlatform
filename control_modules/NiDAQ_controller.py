@@ -1,5 +1,5 @@
-# this code gets the controller inputs from the motionplatform
-# simulated values can be used without NiDAQ-devices or -libraries
+# this code gets the controller inputs from the NiDAQ joysticks
+# simulated values can be used without NiDAQ-devices or -libraries, outputs sine wave values
 
 import random
 import time
@@ -117,6 +117,10 @@ class NiDAQJoysticks:
 
 
 class NiDAQStub:
+    """
+    A stub for simulating the NiDAQ controller outputs.
+    This is only for testing purposes and should not be used as control
+    """
     def __init__(self, min_voltage=-1.0, max_voltage=1.0, frequency=0.1):
         self.min_voltage = min_voltage
         self.max_voltage = max_voltage
@@ -129,6 +133,7 @@ class NiDAQStub:
         return mid_point + amplitude * math.sin(2 * math.pi * self.frequency * elapsed_time)
 
     def read(self):
+        # Generates sine wave values for all channels
         elapsed_time = time.time() - self.start_time
         ai_values = [self.generate_wave(elapsed_time) for _ in range(NUM_AI_CHANNELS)]
         di_values = [random.choice([0.0, 1.0]) for _ in range(NUM_DI_CHANNELS)]

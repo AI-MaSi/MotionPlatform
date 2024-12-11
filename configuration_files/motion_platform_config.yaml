@@ -1,4 +1,7 @@
+# CONFIG FILE NOT USED YET!
+
 # Client configuration for the Motion Platform system
+
 
 # System settings
 simulation: True  # Set to true if running in simulation mode

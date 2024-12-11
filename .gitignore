@@ -242,3 +242,5 @@ fabric.properties
 .idea/MotionPlatform.iml
 .idea/vcs.xml
 log/motionplatf_data.bin
+/misc/ignored/
+/ignored/
