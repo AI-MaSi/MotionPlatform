@@ -2,6 +2,8 @@
 
 3D visualization tool for validating measured geometries of a 2-actuator parallel motion platform. Tests and verifies the physical measurements of platform components (base width/height, top plate dimensions, hinge points) by simulating platform movement based on actuator lengths.
 
+The repository also includes `kinematics2.py` which contains the same geometric calculations as the simulator but without the visualization components, useful for direct calculation of platform kinematics.
+
 ## Usage
 
 1. Run the simulator:
