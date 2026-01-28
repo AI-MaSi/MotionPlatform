@@ -191,8 +191,6 @@ class XboxController:
     def __del__(self):
         self.stop_monitoring()
 
-# Example usage:
-"""
 if __name__ == "__main__":
     # initialize the controller
     controller = XboxController()
@@ -204,4 +202,3 @@ if __name__ == "__main__":
         print(f"Connected: {controller.is_connected()}")
 
         time.sleep(0.1)
-"""
