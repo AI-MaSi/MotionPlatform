@@ -32,7 +32,7 @@ NUM_OUTPUTS = 6   # 4 axes + 2 bumpers
 TX_RATE_HZ = 100
 TX_PERIOD = 1.0 / TX_RATE_HZ
 
-HMAC_KEY = "changeme_shared_secret"
+HMAC_KEY = None  # disabled — server side also has HMAC off
 
 
 # ---------------------------------------------------------------------------
@@ -51,7 +51,7 @@ def main():
     joy = NiDAQJoysticks(output_format="int8", deadzone=1.5, padding=2.5)
 
     # --- UDP ---
-    udp = UDPSocket(local_id=0, max_age_seconds=0.5, hmac_key=HMAC_KEY)
+    udp = UDPSocket(local_id=0, max_age_seconds=0.5, hmac_key=HMAC_KEY, nominal_rate_hz=TX_RATE_HZ)
     udp.setup(host=args.robot_ip, port=args.port,
               num_inputs=NUM_INPUTS, num_outputs=NUM_OUTPUTS,
               is_server=False)
@@ -74,10 +74,10 @@ def main():
             axis, buttons = joy.read()
 
             # Map NiDAQ channels to match Xbox controller layout
-            ly = axis[4]                        # left_ud   → LeftJoystickY
-            lx = axis[3]                        # left_lr   → LeftJoystickX
+            ly = -axis[4]                        # left_ud   → LeftJoystickY
+            lx = -axis[3]                        # left_lr   → LeftJoystickX
             ry = -axis[1]                       # right_ud  → RightJoystickY (inverted)
-            rx = axis[0]                        # right_lr  → RightJoystickX
+            rx = -axis[0]                        # right_lr  → RightJoystickX
             lb = 1 if buttons[2] else 0         # DI2       → LeftBumper
             rb = 1 if buttons[8] else 0         # DI8       → RightBumper
 
