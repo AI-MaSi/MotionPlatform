@@ -19,7 +19,7 @@ Usage:
 import argparse
 import time
 
-from modules.NiDAQ_controller import NiDAQJoysticks
+from modules.NiDAQ_controller import NiDAQJoysticks, OutputFormat
 from modules.udp_socket import UDPSocket
 
 # ---------------------------------------------------------------------------
@@ -48,7 +48,7 @@ def main():
 
     # --- NiDAQ Joysticks ---
     print("Initializing NiDAQ joysticks...")
-    joy = NiDAQJoysticks(output_format="int8", deadzone=1.5, padding=2.5)
+    joy = NiDAQJoysticks(output_format=OutputFormat.INT8, deadzone=1.5, padding=2.5)
 
     # --- UDP ---
     udp = UDPSocket(local_id=0, max_age_seconds=0.5, hmac_key=HMAC_KEY, nominal_rate_hz=TX_RATE_HZ)
@@ -71,15 +71,15 @@ def main():
         tx_count = 0
         dbg_time = time.monotonic()
         while True:
-            axis, buttons = joy.read()
+            data = joy.read()
 
             # Map NiDAQ channels to match Xbox controller layout
-            ly = -axis[4]                        # left_ud   → LeftJoystickY
-            lx = -axis[3]                        # left_lr   → LeftJoystickX
-            ry = -axis[1]                       # right_ud  → RightJoystickY (inverted)
-            rx = -axis[0]                        # right_lr  → RightJoystickX
-            lb = 1 if buttons[2] else 0         # DI2       → LeftBumper
-            rb = 1 if buttons[8] else 0         # DI8       → RightBumper
+            ly = -data.ai[4]                     # left_ud   → LeftJoystickY
+            lx = -data.ai[3]                     # left_lr   → LeftJoystickX
+            ry = -data.ai[1]                     # right_ud  → RightJoystickY (inverted)
+            rx = -data.ai[0]                     # right_lr  → RightJoystickX
+            lb = 1 if data.di[2] else 0          # DI2       → LeftBumper
+            rb = 1 if data.di[8] else 0          # DI8       → RightBumper
 
             udp.send([ly, lx, ry, rx, lb, rb])
             tx_count += 1

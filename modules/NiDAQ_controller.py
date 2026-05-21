@@ -1,15 +1,15 @@
 """
 NiDAQ joystick reader.
 Reads analog (joystick) and digital (button) inputs from a National Instruments DAQ device.
-Optionally returns values as floats or 8-bit signed integers.
 """
 
 import nidaqmx
 from nidaqmx.constants import TerminalConfiguration
 from nidaqmx.errors import DaqError
+from enum import Enum, auto
+from collections import namedtuple
 
 # ----- Configuration -----
-# Hardware voltage range: defines both DAQ input range and normalization
 MIN_VOLTAGE = 0.5      # Minimum joystick voltage (maps to -1.0)
 MAX_VOLTAGE = 4.5      # Maximum joystick voltage (maps to +1.0)
 
@@ -25,22 +25,27 @@ DI_CHANNELS = [
 ]
 
 
-class NiDAQJoysticks:
-    def __init__(self, output_format="float", deadzone=5.0, padding=2.5):
-        """
-        # TODO: add "..." to be [direction_sign,magnitude 0...127]
+class OutputFormat(Enum):
+    FLOAT = auto()   # AI: [-1.0, 1.0], DI: {0.0, 1.0}
+    INT8 = auto()    # AI: [-128, 127],  DI: {0, 127}
 
-        :param output_format: 'float' for normalized [-1, 1] AI and {0.0, 1.0} DI,
-                              'int8' for [-128, 127] AI and {0, 127} DI.
+
+JoystickData = namedtuple("JoystickData", ["ai", "di"])
+
+
+class NiDAQJoysticks:
+    def __init__(self, output_format=OutputFormat.INT8, deadzone=5.0, padding=2.5):
+        """
+        :param output_format: OutputFormat.FLOAT or OutputFormat.INT8
         :param deadzone: Deadzone in %
         :param padding: Edge padding in %
         """
-        if output_format not in ("float", "int8"):
-            raise ValueError("output_format must be 'float' or 'int8'")
+        if output_format not in OutputFormat:
+            raise ValueError("output_format must be an OutputFormat enum value")
         if not (0 <= deadzone < 100):
             raise ValueError("deadzone must be in the range 0...<100%")
         if not (0 <= padding < 100):
-            raise ValueError("deadzone must be in the range 0...<100%")
+            raise ValueError("padding must be in the range 0...<100%")
         self.output_format = output_format
         self.deadzone = deadzone / 100.0
         self.padding = padding / 100.0
@@ -49,7 +54,6 @@ class NiDAQJoysticks:
         self._init_channels()
 
     def _init_channels(self):
-        """Initialize DAQ tasks for AI and DI channels with hardware-level voltage range."""
         try:
             for ch in DI_CHANNELS:
                 self.task_di.di_channels.add_di_chan(ch)
@@ -82,48 +86,39 @@ class NiDAQJoysticks:
         return max(-1.0, min(1.0, x))
 
     def _normalize_ai(self, ai_values):
-        """Normalize voltages, apply deadzone and edge padding."""
+        """Normalize voltages to [-1.0, 1.0] with deadzone and edge padding."""
         voltage_range = MAX_VOLTAGE - MIN_VOLTAGE
         processed = []
-
         for v in ai_values:
-            # Voltage → [-1,1]
             x = (v - MIN_VOLTAGE) / voltage_range * 2 - 1
             x = max(-1.0, min(1.0, x))
-            # Conditioning stack
             x = self._apply_deadzone(x)
             x = self._apply_padding(x)
             processed.append(x)
-
-        # TODO: to own func!
-        if self.output_format == "int8":
-            return [max(-128, min(127, int(round(v * 127)))) for v in processed]
         return processed
 
     def _normalize_di(self, di_values):
-        """Convert raw digital readings to requested format."""
-        if self.output_format == "int8":
-            return [127 if bool(v) else 0 for v in di_values]
-        return [float(v) for v in di_values]
+        """Convert raw digital readings to float {0.0, 1.0}."""
+        return [1.0 if bool(v) else 0.0 for v in di_values]
+
+    def _quantize(self, ai_floats, di_floats):
+        """Apply output format and return JoystickData."""
+        if self.output_format == OutputFormat.INT8:
+            ai = [max(-128, min(127, int(round(v * 127)))) for v in ai_floats]
+            di = [127 if v > 0.5 else 0 for v in di_floats]
+            return JoystickData(ai=ai, di=di)
+        return JoystickData(ai=ai_floats, di=di_floats)
 
     def read(self):
-        """
-        Read AI and DI channel values.
-        :return: (ai_list, di_list)
-        """
+        """Read channels and return JoystickData(ai, di)."""
         try:
             ai_raw = self.task_ai.read()
             di_raw = self.task_di.read()
         except DaqError as e:
             raise RuntimeError(f"Failed to read from NiDAQ: {e}")
-
-        ai_processed = self._normalize_ai(ai_raw)
-        di_processed = self._normalize_di(di_raw)
-
-        return ai_processed, di_processed
+        return self._quantize(self._normalize_ai(ai_raw), self._normalize_di(di_raw))
 
     def close(self):
-        """Stop and close DAQ tasks."""
         for task in (self.task_ai, self.task_di):
             try:
                 task.stop()
@@ -147,31 +142,26 @@ if __name__ == "__main__":
     print("Move joysticks or press buttons to see active channels.")
     print("Press Ctrl+C to exit.\n")
 
-    controller = NiDAQJoysticks(output_format="float", deadzone=5.0)
+    controller = NiDAQJoysticks(output_format=OutputFormat.FLOAT, deadzone=5.0)
 
     try:
         while True:
-            ai_values, di_values = controller.read()
+            data = controller.read()
 
             active_channels = []
-
-            # Check analog inputs
-            for i, (channel, value) in enumerate(zip(AI_CHANNELS, ai_values)):
+            for i, (channel, value) in enumerate(zip(AI_CHANNELS, data.ai)):
                 if abs(value) > 0.0:
                     active_channels.append(f"[AI:{i}] {channel}: {value:+.3f}")
-
-            # Check digital inputs
-            for i, (channel, value) in enumerate(zip(DI_CHANNELS, di_values)):
-                if value > 0.5:  # Button pressed
+            for i, (channel, value) in enumerate(zip(DI_CHANNELS, data.di)):
+                if value > 0.5:
                     active_channels.append(f"[DI:{i}] {channel}: PRESSED")
 
-            # Print active channels on one line
             if active_channels:
                 print("\r" + " | ".join(active_channels) + " " * 20, end="", flush=True)
             else:
                 print("\r" + "No active channels" + " " * 50, end="", flush=True)
 
-            time.sleep(0.05)  # 20Hz update rate
+            time.sleep(0.05)
 
     except KeyboardInterrupt:
         print("\n\nExiting...")
