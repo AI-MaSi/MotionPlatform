@@ -54,6 +54,17 @@ def main():
     if sys.platform == 'win32':
         _winmm = ctypes.WinDLL('winmm')
         _winmm.timeBeginPeriod(1)
+        # Disable QuickEdit: clicking the console window otherwise freezes the
+        # process (Windows pauses output in selection mode), which is dangerous
+        # in a real-time control loop.
+        _kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+        _stdin = _kernel32.GetStdHandle(-10)  # STD_INPUT_HANDLE
+        _mode = ctypes.c_ulong()
+        if _kernel32.GetConsoleMode(_stdin, ctypes.byref(_mode)):
+            ENABLE_QUICK_EDIT = 0x0040
+            ENABLE_EXTENDED_FLAGS = 0x0080
+            _mode.value = (_mode.value & ~ENABLE_QUICK_EDIT) | ENABLE_EXTENDED_FLAGS
+            _kernel32.SetConsoleMode(_stdin, _mode)
 
     print("Initializing controller stack...")
     tx_period = 1.0 / args.rate

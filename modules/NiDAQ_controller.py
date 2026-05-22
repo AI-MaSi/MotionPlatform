@@ -36,7 +36,7 @@ JoystickData = namedtuple("JoystickData", ["ai", "di"])
 
 
 class NiDAQJoysticks:
-    def __init__(self, output_format=OutputFormat.INT8, deadzone=5.0, padding=1.0, sample_rate=500):
+    def __init__(self, output_format=OutputFormat.INT8, deadzone=5.0, padding=1.0, sample_rate=250):
         """
         :param output_format: OutputFormat.FLOAT or OutputFormat.INT8
         :param deadzone: Deadzone in %
