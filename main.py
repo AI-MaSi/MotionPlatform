@@ -9,11 +9,12 @@ UDP output: 8 × int8 axes + 1 × uint16 button bitmask  ('< 8bH')
 
 Usage:
     python main.py --ip 192.168.0.132:8080
-    python main.py --ip 192.168.0.132:8080 --id 2 --debug
     python main.py --dry
 """
 
 import argparse
+import ctypes
+import sys
 import time
 
 from modules.NiDAQ_controller import NiDAQJoysticks, OutputFormat
@@ -68,12 +69,16 @@ def main():
     parser.add_argument("--ip", help="Robot IP:port  e.g. 192.168.0.132:8080")
     parser.add_argument("--id", type=int, default=1, dest="local_id", help="Local device ID")
     parser.add_argument("--rate", type=int, default=50, help="TX rate in Hz (default: 50)")
-    parser.add_argument("--dry", action="store_true", help="Run without connecting — prints values")
-    parser.add_argument("--debug", action="store_true", help="Show live values while connected")
+    parser.add_argument("--dry", action="store_true", help="Run without connecting to robot")
     args = parser.parse_args()
 
     if not args.dry and not args.ip:
         parser.error("--ip is required unless --dry is set")
+
+    _winmm = None
+    if sys.platform == 'win32':
+        _winmm = ctypes.WinDLL('winmm')
+        _winmm.timeBeginPeriod(1)
 
     print("Initializing NiDAQ joysticks...")
     tx_period = 1.0 / args.rate
@@ -116,15 +121,14 @@ def main():
 
             tx_count += 1
 
-            if args.dry or args.debug:
-                now = time.monotonic()
-                if now - dbg_time >= 0.1:
-                    hz = tx_count / (now - dbg_time)
-                    gp_str = "GP:OK" if gamepad.is_connected() else "GP:--"
-                    ax = " ".join(f"A{i}:{v:+4d}" for i, v in enumerate(ai))
-                    print(f"\r{hz:5.0f}Hz {gp_str} | {ax} | BTN:{mask:012b}", end="", flush=True)
-                    tx_count = 0
-                    dbg_time = now
+            now = time.monotonic()
+            if now - dbg_time >= 0.1:
+                hz = tx_count / (now - dbg_time)
+                gp_str = "GP:OK" if gamepad.is_connected() else "GP:--"
+                ax = " ".join(f"A{i}:{v:+4d}" for i, v in enumerate(ai))
+                print(f"\r{hz:5.0f}Hz {gp_str} | {ax} | BTN:{mask:012b}", end="", flush=True)
+                tx_count = 0
+                dbg_time = now
 
             next_time += tx_period
             sleep_for = next_time - time.monotonic()
@@ -140,6 +144,8 @@ def main():
             udp.send([0] * 8 + [0])
             udp.close()
         joy.close()
+        if _winmm:
+            _winmm.timeEndPeriod(1)
         print("\nStopped")
 
 
