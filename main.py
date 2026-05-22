@@ -1,68 +1,148 @@
 """
-Main robot control — NiDAQ joystick version.
+Robot control — NiDAQ joystick + optional USB gamepad.
 
-Reads joystick axes and buttons from NiDAQ, sends over UDP to robot.
+Primary:  NiDAQ physical joystick (AI0–AI7 axes, DI0–DI11 buttons)
+Optional: USB gamepad (Xbox/compatible) — larger absolute value wins per axis
 
-UDP output (10 signed bytes):
-    [0] button_0      (0 or 127)   ← DI9  (left top red button)
-    [1] button_1      (0 or 127)   ← DI0  (right rocker U/D)
-    [2] button_2      (0 or 127)   ← DI1
-    [3] button_3      (0 or 127)   ← DI3  (unknown — needs mapping)
-    [4] LeftPaddle    (-128..127)  ← AI7
-    [5] RightPaddle   (-128..127)  ← AI6
-    [6] LeftJoyY      (-128..127)  ← AI4  (left_ud)
-    [7] LeftJoyX      (-128..127)  ← AI3  (left_lr)
-    [8] RightJoyY     (-128..127)  ← AI1  (right_ud, inverted)
-    [9] RightJoyX     (-128..127)  ← AI0  (right_lr)
+UDP output: 8 × int8 axes + 1 × uint16 button bitmask  ('< 8bH')
+    Axes sent raw (no inversions) — configure on the robot/server side.
 
 Usage:
-    python main.py
+    python main.py --ip 192.168.0.132:8080
+    python main.py --ip 192.168.0.132:8080 --id 2 --debug
+    python main.py --dry
 """
+
+import argparse
+import time
 
 from modules.NiDAQ_controller import NiDAQJoysticks, OutputFormat
 from modules.udp_socket import UDPSocket
-import time
+from modules.gamepad_module import XboxController
 
 
-TX_RATE_HZ = 100
-TX_PERIOD = 1.0 / TX_RATE_HZ
+def _gp_to_channels(gp: dict):
+    """Convert XboxController.read() dict to (ai: List[int8], di: List[bool])."""
+    def joy(v):  return max(-128, min(127, int(round(v * 127.0))))
+    def trig(v): return max(0,    min(127, int(round(v * 127.0))))
+    ai = [
+        joy(gp['RightJoystickX']),  # AI0: right_lr
+        joy(gp['RightJoystickY']),  # AI1: right_ud
+        0,                           # AI2: right_rocker — unmapped
+        joy(gp['LeftJoystickX']),   # AI3: left_lr
+        joy(gp['LeftJoystickY']),   # AI4: left_ud
+        0,                           # AI5: left_rocker  — unmapped
+        trig(gp['RightTrigger']),   # AI6: right_paddle
+        trig(gp['LeftTrigger']),    # AI7: left_paddle
+    ]
+    di = [
+        bool(gp['A']),           # DI0
+        bool(gp['B']),           # DI1
+        bool(gp['X']),           # DI2
+        bool(gp['Y']),           # DI3
+        bool(gp['LeftBumper']),  # DI4
+        bool(gp['RightBumper']), # DI5
+        bool(gp['LeftThumb']),   # DI6
+        bool(gp['RightThumb']),  # DI7
+        bool(gp['Back']),        # DI8
+        bool(gp['Start']),       # DI9
+        bool(gp['UpDPad']),      # DI10
+        bool(gp['DownDPad']),    # DI11
+    ]
+    return ai, di
 
-joy = NiDAQJoysticks(output_format=OutputFormat.INT8, deadzone=1.5, padding=2.5)
-client = UDPSocket(local_id=1, max_age_seconds=0.5)
-client.setup(host="192.168.0.132", port=8080, num_inputs=0, num_outputs=10, is_server=False)
 
-if client.handshake(timeout=30.0):
+def _merge(nidaq_ai, nidaq_di, gp_ai, gp_di):
+    """Merge NiDAQ and gamepad inputs: larger |value| wins per axis, OR for buttons."""
+    ai = [n if abs(n) >= abs(g) else g for n, g in zip(nidaq_ai, gp_ai)]
+    di = [n or g for n, g in zip(nidaq_di, gp_di)]
+    return ai, di
 
-    next_time = time.monotonic()
-    while True:
-        data = joy.read()
 
-        right_lr = data.ai[0]
-        right_ud = -data.ai[1]
-        right_rocker = data.ai[2]
-        left_lr = data.ai[3]
-        left_ud = data.ai[4]
-        left_rocker = data.ai[5]
-        right_paddle = data.ai[6]
-        left_paddle = data.ai[7]
+def _to_mask(di):
+    return sum(1 << i for i, v in enumerate(di) if v)
 
-        button_0 = data.di[9]   # left top red button
-        button_1 = data.di[0]   # right rocker U/D
-        button_2 = data.di[1]
-        button_3 = data.di[3]   # figure out what this button is haha
 
-        success = client.send([button_0, button_1, button_2, button_3,
-                     left_paddle, right_paddle,
-                     left_ud, left_lr,
-                     right_ud, right_lr
-                     ])
+def main():
+    parser = argparse.ArgumentParser(description="Robot joystick/gamepad sender")
+    parser.add_argument("--ip", help="Robot IP:port  e.g. 192.168.0.132:8080")
+    parser.add_argument("--id", type=int, default=1, dest="local_id", help="Local device ID")
+    parser.add_argument("--rate", type=int, default=50, help="TX rate in Hz (default: 50)")
+    parser.add_argument("--dry", action="store_true", help="Run without connecting — prints values")
+    parser.add_argument("--debug", action="store_true", help="Show live values while connected")
+    args = parser.parse_args()
 
-        if not success:
-            break
+    if not args.dry and not args.ip:
+        parser.error("--ip is required unless --dry is set")
 
-        next_time += TX_PERIOD
-        sleep_for = next_time - time.monotonic()
-        if sleep_for > 0:
-            time.sleep(sleep_for)
-        else:
-            next_time = time.monotonic()
+    print("Initializing NiDAQ joysticks...")
+    tx_period = 1.0 / args.rate
+
+    joy = NiDAQJoysticks(output_format=OutputFormat.INT8, deadzone=1.5, padding=2.5)
+    gamepad = XboxController()
+
+    udp = None
+    if not args.dry:
+        host, _, port_str = args.ip.rpartition(':')
+        port = int(port_str)
+        udp = UDPSocket(local_id=args.local_id, max_age_seconds=0.5, nominal_rate_hz=args.rate)
+        udp.setup(host=host, port=port, inputs='', outputs='<8bH', is_server=False)
+        print(f"Connecting to {host}:{port}...")
+        if not udp.handshake(timeout=10.0):
+            print("Handshake failed")
+            joy.close()
+            udp.close()
+            return
+
+    label = "DRY RUN" if args.dry else f"→ {args.ip}"
+    print(f"{label} at {args.rate} Hz — Ctrl+C to stop")
+
+    try:
+        next_time = time.monotonic()
+        tx_count = 0
+        dbg_time = time.monotonic()
+
+        while True:
+            nidaq = joy.read()
+            gp = gamepad.read()
+            gp_ai, gp_di = _gp_to_channels(gp)
+
+            nidaq_di = [v > 0 for v in nidaq.di]
+            ai, di = _merge(nidaq.ai, nidaq_di, gp_ai, gp_di)
+            mask = _to_mask(di)
+
+            if udp and not udp.send(ai + [mask]):
+                break
+
+            tx_count += 1
+
+            if args.dry or args.debug:
+                now = time.monotonic()
+                if now - dbg_time >= 0.1:
+                    hz = tx_count / (now - dbg_time)
+                    gp_str = "GP:OK" if gamepad.is_connected() else "GP:--"
+                    ax = " ".join(f"A{i}:{v:+4d}" for i, v in enumerate(ai))
+                    print(f"\r{hz:5.0f}Hz {gp_str} | {ax} | BTN:{mask:012b}", end="", flush=True)
+                    tx_count = 0
+                    dbg_time = now
+
+            next_time += tx_period
+            sleep_for = next_time - time.monotonic()
+            if sleep_for > 0:
+                time.sleep(sleep_for)
+            else:
+                next_time = time.monotonic()
+
+    except KeyboardInterrupt:
+        pass
+    finally:
+        if udp:
+            udp.send([0] * 8 + [0])
+            udp.close()
+        joy.close()
+        print("\nStopped")
+
+
+if __name__ == "__main__":
+    main()
+```

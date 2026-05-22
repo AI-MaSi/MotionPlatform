@@ -5,7 +5,6 @@
 1. Update system packages:
 ```bash
 sudo apt-get update
-sudo apt-get upgrade
 ```
 
 2. Install GStreamer and dependencies:
@@ -37,15 +36,33 @@ sudo apt-get install gstreamer1.0-qt5
    - Click "OK" on all windows
    - Restart Command Prompt/PowerShell
 
-## Usage (With VLC using RTP, low latency UDP connection) 
-(assuming camera is `/dev/video0` and receiver IP is set)
+## Usage (Low latency H264 over RTP/UDP)
+(assuming camera is `/dev/video0` and receiver hostname/IP is set)
 
-On excavator:
+On excavator (sender):
 ```bash
-gst-launch-1.0 v4l2src device=/dev/video0 ! image/jpeg,width=1280,height=720,framerate=30/1 ! jpegdec ! videoconvert ! x264enc tune=zerolatency bitrate=2000 speed-preset=ultrafast ! rtph264pay mtu=1200 ! udpsink host=<receiver_IP> port=8081
+gst-launch-1.0 -v v4l2src device=/dev/video0 do-timestamp=true \
+  ! image/jpeg,width=1280,height=720,framerate=30/1 \
+  ! jpegdec \
+  ! queue leaky=downstream max-size-buffers=1 max-size-bytes=0 max-size-time=0 \
+  ! videoconvert \
+  ! x264enc tune=zerolatency speed-preset=ultrafast bitrate=2000 key-int-max=15 bframes=0 sliced-threads=true byte-stream=true threads=1 \
+  ! h264parse config-interval=-1 \
+  ! rtph264pay pt=96 config-interval=1 mtu=1200 \
+  ! udpsink host=<receiver_hostname_or_IP> port=5005 sync=false async=false
 ```
 
-On receiving PC:
+On receiving PC (Windows):
 ```bash
-gst-launch-1.0 udpsrc port=8081 caps="application/x-rtp, media=video, clock-rate=90000, encoding-name=H264" ! rtph264depay ! avdec_h264 ! videoconvert ! autovideosink
+gst-launch-1.0 -v udpsrc port=5005 caps="application/x-rtp,media=video,encoding-name=H264,payload=96,clock-rate=90000" \
+  ! queue \
+  ! rtpjitterbuffer latency=0 drop-on-latency=true \
+  ! rtph264depay \
+  ! avdec_h264 \
+  ! videoflip method=rotate-180 \
+  ! videoconvert \
+  ! autovideosink sync=false
 ```
+
+> **Note:** `videoflip method=rotate-180` corrects an upside-down camera mount — remove it if your camera is already oriented correctly.
+> **Tuning:** `bitrate` (sender) and `mtu` on `rtph264pay` are worth experimenting with — lower bitrate reduces bandwidth at the cost of quality, and MTU may need adjusting depending on your network (default 1200 is safe for most setups; try 1400 on local networks).

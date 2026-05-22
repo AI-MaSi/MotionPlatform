@@ -1,0 +1,14 @@
+savonia 2DOF
+gst-launch-1.0 -v v4l2src device=/dev/video0 do-timestamp=true ! image/jpeg,width=1280,height=720,framerate=30/1 ! jpegdec ! queue leaky=downstream max-size-buffers=1 max-size-bytes=0 max-size-time=0 ! videoconvert ! x264enc tune=zerolatency speed-preset=ultrafast bitrate=3000 key-int-max=15 bframes=0 sliced-threads=true byte-stream=true threads=1 ! h264parse config-interval=-1 ! rtph264pay pt=96 config-interval=1 ! udpsink host=savonia-01-2dof port=5005 sync=false async=false
+
+test with MJPG
+gst-launch-1.0 -v v4l2src device=/dev/video0 do-timestamp=true ! image/jpeg,width=1280,height=720,framerate=30/1 ! jpegdec ! queue leaky=downstream max-size-buffers=1 max-size-bytes=0 max-size-time=0 ! videoconvert ! x264enc tune=zerolatency speed-preset=ultrafast bitrate=1000 key-int-max=15 bframes=0 sliced-threads=true byte-stream=true threads=1 ! h264parse config-interval=-1 ! rtph264pay pt=96 config-interval=1 ! udpsink host=savonia-01-2dof port=5005 sync=false async=false
+
+
+YSAO testi omaan läppäriin
+gst-launch-1.0 -v v4l2src device=/dev/video0 do-timestamp=true ! image/jpeg,width=1280,height=720,framerate=30/1 ! jpegdec ! queue leaky=downstream max-size-buffers=1 max-size-bytes=0 max-size-time=0 ! videoconvert ! x264enc tune=zerolatency speed-preset=ultrafast bitrate=1000 key-int-max=15 bframes=0 sliced-threads=true byte-stream=true threads=1 ! h264parse config-interval=-1 ! rtph264pay pt=96 config-interval=1 ! udpsink host=joel-fujitsu port=5005 sync=false async=false
+
+
+vastaanotto
+
+gst-launch-1.0 -v udpsrc port=5005 caps="application/x-rtp,media=video,encoding-name=H264,payload=96,clock-rate=90000" ! queue ! rtpjitterbuffer latency=0 drop-on-latency=true ! rtph264depay ! avdec_h264 ! videoflip method=rotate-180 ! videoconvert ! autovideosink sync=false
