@@ -122,7 +122,7 @@ def main():
             tx_count += 1
 
             now = time.monotonic()
-            if now - dbg_time >= 0.1:
+            if now - dbg_time >= 1.0:
                 hz = tx_count / (now - dbg_time)
                 gp_str = "GP:OK" if gamepad.is_connected() else "GP:--"
                 ax = " ".join(f"A{i}:{v:+4d}" for i, v in enumerate(ai))
