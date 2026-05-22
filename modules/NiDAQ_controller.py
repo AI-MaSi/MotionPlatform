@@ -4,8 +4,10 @@ Reads analog (joystick) and digital (button) inputs from a National Instruments 
 """
 
 import nidaqmx
+import numpy as np
 from nidaqmx.constants import AcquisitionType, TerminalConfiguration
 from nidaqmx.errors import DaqError
+from nidaqmx.stream_readers import AnalogMultiChannelReader
 from enum import Enum, auto
 from collections import namedtuple
 
@@ -34,7 +36,7 @@ JoystickData = namedtuple("JoystickData", ["ai", "di"])
 
 
 class NiDAQJoysticks:
-    def __init__(self, output_format=OutputFormat.INT8, deadzone=5.0, padding=2.5, sample_rate=500):
+    def __init__(self, output_format=OutputFormat.INT8, deadzone=5.0, padding=1.0, sample_rate=500):
         """
         :param output_format: OutputFormat.FLOAT or OutputFormat.INT8
         :param deadzone: Deadzone in %
@@ -53,6 +55,8 @@ class NiDAQJoysticks:
         self.sample_rate = sample_rate
         self.task_ai = nidaqmx.Task()
         self.task_di = nidaqmx.Task()
+        self.ai_reader = None
+        self.ai_buffers = {}
         self._init_channels()
 
     def _init_channels(self):
@@ -66,14 +70,15 @@ class NiDAQJoysticks:
                     max_val=MAX_VOLTAGE,
                     terminal_config=TerminalConfiguration.RSE
                 )
-            # Hardware-timed continuous acquisition: samples are clocked by the DAQ
-            # hardware so read() pulls from the buffer instead of triggering a new
-            # software-timed acquisition, eliminating per-call driver round-trip jitter.
+            # Hardware-timed continuous acquisition: sample comfortably above the
+            # 20-100 Hz polling range so each poll can drain backlog and keep the
+            # newest sample without software-timed acquisition jitter.
             self.task_ai.timing.cfg_samp_clk_timing(
                 rate=self.sample_rate,
                 sample_mode=AcquisitionType.CONTINUOUS,
                 samps_per_chan=self.sample_rate,  # 1-second ring buffer
             )
+            self.ai_reader = AnalogMultiChannelReader(self.task_ai.in_stream)
             self.task_ai.start()
             print(f"NiDAQ initialized: {len(AI_CHANNELS)} AI channels @ {self.sample_rate} Hz, {len(DI_CHANNELS)} DI channels.")
             print(f"NiDAQ ready | Deadzone: {self.deadzone*100:.1f}% | Padding: {self.padding*100:.1f}%")
@@ -123,10 +128,22 @@ class NiDAQJoysticks:
     def read(self):
         """Read channels and return JoystickData(ai, di)."""
         try:
-            # number_of_samples_per_channel=1 with continuous HW timing returns
-            # [[v], [v], ...] — one list per channel, take index 0 of each.
-            ai_raw_buf = self.task_ai.read(number_of_samples_per_channel=1)
-            ai_raw = [ch[0] for ch in ai_raw_buf]
+            # Drain completed AI samples and use the newest sample per channel.
+            # Reading a fixed single sample at a slower polling rate leaves
+            # backlog and eventually raises DAQmx -200279.
+            samples_available = self.task_ai.in_stream.avail_samp_per_chan
+            samples_to_read = min(samples_available, self.sample_rate) if samples_available > 0 else 1
+            ai_buffer = self.ai_buffers.get(samples_to_read)
+            if ai_buffer is None:
+                ai_buffer = np.empty((len(AI_CHANNELS), samples_to_read), dtype=np.float64)
+                self.ai_buffers[samples_to_read] = ai_buffer
+            samples_read = self.ai_reader.read_many_sample(
+                ai_buffer,
+                number_of_samples_per_channel=samples_to_read,
+            )
+            if samples_read <= 0:
+                raise RuntimeError("NiDAQ returned no analog samples")
+            ai_raw = ai_buffer[:, samples_read - 1].tolist()
             di_raw = self.task_di.read()
         except DaqError as e:
             raise RuntimeError(f"Failed to read from NiDAQ: {e}")

@@ -1,0 +1,154 @@
+{
+  "_notes": {
+    "udp": "Packet is 8 int8 axes plus 16 button bits. Button bits 14 and 15 are still free.",
+    "disabled_sources": "Use null when a packet slot has no gamepad or NiDAQ source."
+  },
+  "axes": [
+    {
+      "index": 0,
+      "name": "right_stick_x",
+      "gamepad": { "name": "right_stick_x", "direction": 1, "deadzone_percent": 30.0 },
+      "nidaq": { "index": 0, "name": "right_lr", "direction": 1, "deadzone_percent": 1.5 }
+    },
+    {
+      "index": 1,
+      "name": "right_stick_y",
+      "gamepad": { "name": "right_stick_y", "direction": 1, "deadzone_percent": 30.0 },
+      "nidaq": { "index": 1, "name": "right_ud", "direction": -1, "deadzone_percent": 1.5 }
+    },
+    {
+      "index": 2,
+      "name": "right_rocker",
+      "gamepad": null,
+      "nidaq": { "index": 2, "name": "right_rocker", "direction": 1, "deadzone_percent": 1.5 }
+    },
+    {
+      "index": 3,
+      "name": "left_stick_x",
+      "gamepad": { "name": "left_stick_x", "direction": 1, "deadzone_percent": 30.0 },
+      "nidaq": { "index": 3, "name": "left_lr", "direction": -1, "deadzone_percent": 1.5 }
+    },
+    {
+      "index": 4,
+      "name": "left_stick_y",
+      "gamepad": { "name": "left_stick_y", "direction": 1, "deadzone_percent": 30.0 },
+      "nidaq": { "index": 4, "name": "left_ud", "direction": -1, "deadzone_percent": 1.5 }
+    },
+    {
+      "index": 5,
+      "name": "left_rocker",
+      "gamepad": null,
+      "nidaq": { "index": 5, "name": "left_rocker", "direction": 1, "deadzone_percent": 1.5 }
+    },
+    {
+      "index": 6,
+      "name": "right_trigger",
+      "gamepad": { "name": "right_trigger", "direction": 1, "deadzone_percent": 10.0 },
+      "nidaq": { "index": 6, "name": "right_paddle", "direction": 1, "deadzone_percent": 5.0 }
+    },
+    {
+      "index": 7,
+      "name": "left_trigger",
+      "gamepad": { "name": "left_trigger", "direction": 1, "deadzone_percent": 10.0 },
+      "nidaq": { "index": 7, "name": "left_paddle", "direction": 1, "deadzone_percent": 5.0 }
+    }
+  ],
+  "buttons": [
+    {
+      "index": 0,
+      "name": "A",
+      "gamepad": { "name": "A" },
+      "nidaq": { "index": 3, "name": "right_button_3" }
+    },
+    {
+      "index": 1,
+      "name": "B",
+      "gamepad": { "name": "B" },
+      "nidaq": { "index": 5, "name": "right_button_2" }
+    },
+    {
+      "index": 2,
+      "name": "X",
+      "gamepad": { "name": "X" },
+      "nidaq": { "index": 2, "name": "right_button_back" }
+    },
+    {
+      "index": 3,
+      "name": "Y",
+      "gamepad": { "name": "Y" },
+      "nidaq": { "index": 4, "name": "right_button_1" }
+    },
+    {
+      "index": 4,
+      "name": "LeftBumper",
+      "gamepad": { "name": "LeftBumper" },
+      "nidaq": null
+    },
+    {
+      "index": 5,
+      "name": "RightBumper",
+      "gamepad": { "name": "RightBumper" },
+      "nidaq": null
+    },
+    {
+      "index": 6,
+      "name": "LeftThumb",
+      "gamepad": { "name": "LeftThumb" },
+      "nidaq": null
+    },
+    {
+      "index": 7,
+      "name": "RightThumb",
+      "gamepad": { "name": "RightThumb" },
+      "nidaq": null
+    },
+    {
+      "index": 8,
+      "name": "Back",
+      "gamepad": { "name": "Back" },
+      "nidaq": { "index": 8, "name": "left_button_back" }
+    },
+    {
+      "index": 9,
+      "name": "Start",
+      "gamepad": { "name": "Start" },
+      "nidaq": { "index": 9, "name": "left_button_1" }
+    },
+    {
+      "index": 10,
+      "name": "UpDPad",
+      "gamepad": { "name": "UpDPad" },
+      "nidaq": { "index": 10, "name": "left_button_3" }
+    },
+    {
+      "index": 11,
+      "name": "DownDPad",
+      "gamepad": { "name": "DownDPad" },
+      "nidaq": { "index": 11, "name": "left_button_2" }
+    },
+    {
+      "index": 12,
+      "name": "LeftDPad",
+      "gamepad": { "name": "LeftDPad" },
+      "nidaq": null
+    },
+    {
+      "index": 13,
+      "name": "RightDPad",
+      "gamepad": { "name": "RightDPad" },
+      "nidaq": null
+    },
+    {
+      "index": 14,
+      "name": "free_button_14",
+      "gamepad": null,
+      "nidaq": null
+    },
+    {
+      "index": 15,
+      "name": "free_button_15",
+      "gamepad": null,
+      "nidaq": null
+    }
+  ]
+}

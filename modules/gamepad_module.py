@@ -34,17 +34,21 @@ MAPPING (this is the index read() function returns):
 class XboxController:
     MAX_TRIG_VAL = math.pow(2, 8)
     MAX_JOY_VAL = math.pow(2, 15)
-    MAX_RECONNECT_ATTEMPTS = 5  # Maximum number of reconnection attempts
 
-    def __init__(self):
-        self.reset_values()
+    def __init__(self, autostart=True):
+        self._state_lock = threading.Lock()
         self._monitor_thread = None
         self._stop_event = threading.Event()
         self._connected = False
-        self._reconnect_count = 0
-        self.start_monitoring()
+        self.reset_values()
+        if autostart:
+            self.start_monitoring()
 
     def reset_values(self):
+        with self._state_lock:
+            self._reset_values_locked()
+
+    def _reset_values_locked(self):
         self.LeftJoystickY = 0
         self.LeftJoystickX = 0
         self.RightJoystickY = 0
@@ -73,57 +77,59 @@ class XboxController:
             self._monitor_thread.daemon = True
             self._monitor_thread.start()
 
-    def stop_monitoring(self):
+    def stop_monitoring(self, timeout=0.2):
         self._stop_event.set()
-        if self._monitor_thread:
-            self._monitor_thread.join()
+        if self._monitor_thread and self._monitor_thread.is_alive():
+            self._monitor_thread.join(timeout=timeout)
 
     def read(self):
-        if not self._connected:
-            #print("[Warning] Controller is not connected! (you might need to press any button to connect)")
-            self.reset_values()
-        return {
-            'LeftJoystickY': self.LeftJoystickY,
-            'LeftJoystickX': self.LeftJoystickX,
-            'RightJoystickY': self.RightJoystickY,
-            'RightJoystickX': self.RightJoystickX,
-            'LeftTrigger': self.LeftTrigger,
-            'RightTrigger': self.RightTrigger,
-            'LeftBumper': self.LeftBumper,
-            'RightBumper': self.RightBumper,
-            'A': self.A,
-            'X': self.X,
-            'Y': self.Y,
-            'B': self.B,
-            'LeftThumb': self.LeftThumb,
-            'RightThumb': self.RightThumb,
-            'Back': self.Back,
-            'Start': self.Start,
-            'LeftDPad': self.LeftDPad,
-            'RightDPad': self.RightDPad,
-            'UpDPad': self.UpDPad,
-            'DownDPad': self.DownDPad
-        }
+        with self._state_lock:
+            if not self._connected:
+                #print("[Warning] Controller is not connected! (you might need to press any button to connect)")
+                self._reset_values_locked()
+            return {
+                'LeftJoystickY': self.LeftJoystickY,
+                'LeftJoystickX': self.LeftJoystickX,
+                'RightJoystickY': self.RightJoystickY,
+                'RightJoystickX': self.RightJoystickX,
+                'LeftTrigger': self.LeftTrigger,
+                'RightTrigger': self.RightTrigger,
+                'LeftBumper': self.LeftBumper,
+                'RightBumper': self.RightBumper,
+                'A': self.A,
+                'X': self.X,
+                'Y': self.Y,
+                'B': self.B,
+                'LeftThumb': self.LeftThumb,
+                'RightThumb': self.RightThumb,
+                'Back': self.Back,
+                'Start': self.Start,
+                'LeftDPad': self.LeftDPad,
+                'RightDPad': self.RightDPad,
+                'UpDPad': self.UpDPad,
+                'DownDPad': self.DownDPad
+            }
 
     def _monitor_controller(self):
         while not self._stop_event.is_set():
             try:
                 events = get_gamepad()
-                self._connected = True
-                self._reconnect_count = 0  # Reset reconnection counter on successful connection
-                for event in events:
-                    self._process_event(event)
+                with self._state_lock:
+                    self._connected = True
+                    for event in events:
+                        self._process_event_locked(event)
             except UnpluggedError:
-                if self._connected:
-                    print("[JOYSTICK] Controller disconnected. Attempting to reconnect...")
-                    self._connected = False
-                    self.reset_values()
-                if not self._attempt_reconnect():
-                    print("[ERROR] Maximum reconnection attempts reached. Stopping controller monitoring.")
-                    self._stop_event.set()
-                    break
+                self._mark_disconnected()
+                self._stop_event.wait(1.0)
+            except Exception:
+                self._mark_disconnected()
+                self._stop_event.wait(1.0)
 
     def _process_event(self, event):
+        with self._state_lock:
+            self._process_event_locked(event)
+
+    def _process_event_locked(self, event):
         if event.code == 'ABS_Y':
             self.LeftJoystickY = event.state / self.MAX_JOY_VAL
         elif event.code == 'ABS_X':
@@ -156,6 +162,12 @@ class XboxController:
             self.Back = event.state
         elif event.code == 'BTN_START':
             self.Start = event.state
+        elif event.code == 'ABS_HAT0X':
+            self.LeftDPad = 1 if event.state < 0 else 0
+            self.RightDPad = 1 if event.state > 0 else 0
+        elif event.code == 'ABS_HAT0Y':
+            self.UpDPad = 1 if event.state < 0 else 0
+            self.DownDPad = 1 if event.state > 0 else 0
         elif event.code == 'BTN_TRIGGER_HAPPY1':
             self.LeftDPad = event.state
         elif event.code == 'BTN_TRIGGER_HAPPY2':
@@ -165,28 +177,14 @@ class XboxController:
         elif event.code == 'BTN_TRIGGER_HAPPY4':
             self.DownDPad = event.state
 
-    def _attempt_reconnect(self):
-        wait_delay = 3
-
-        while not self._stop_event.is_set() and self._reconnect_count < self.MAX_RECONNECT_ATTEMPTS:
-            try:
-                get_gamepad()
-                print("[JOYSTICK] Controller reconnected successfully!")
-                self._connected = True
-                return True
-            except UnpluggedError:
-                self._reconnect_count += 1
-                remaining_attempts = self.MAX_RECONNECT_ATTEMPTS - self._reconnect_count
-                print(f"[JOYSTICK] Reconnection attempt {self._reconnect_count}/{self.MAX_RECONNECT_ATTEMPTS} "
-                      f"failed. {remaining_attempts} attempts remaining. "
-                      f"Retrying in {wait_delay} seconds...")
-                time.sleep(wait_delay)
-
-        return False
-
+    def _mark_disconnected(self):
+        with self._state_lock:
+            self._connected = False
+            self._reset_values_locked()
 
     def is_connected(self):
-        return self._connected
+        with self._state_lock:
+            return self._connected
 
     def __del__(self):
         self.stop_monitoring()

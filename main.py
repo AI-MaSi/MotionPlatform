@@ -13,55 +13,13 @@ Usage:
 """
 
 import argparse
+from collections import deque
 import ctypes
 import sys
 import time
 
-from modules.NiDAQ_controller import NiDAQJoysticks, OutputFormat
+from modules.controller_stack import ControllerStack, DEFAULT_CONFIG_PATH
 from modules.udp_socket import UDPSocket
-from modules.gamepad_module import XboxController
-
-
-def _gp_to_channels(gp: dict):
-    """Convert XboxController.read() dict to (ai: List[int8], di: List[bool])."""
-    def joy(v):  return max(-128, min(127, int(round(v * 127.0))))
-    def trig(v): return max(0,    min(127, int(round(v * 127.0))))
-    ai = [
-        joy(gp['RightJoystickX']),  # AI0: right_lr
-        joy(gp['RightJoystickY']),  # AI1: right_ud
-        0,                           # AI2: right_rocker — unmapped
-        joy(gp['LeftJoystickX']),   # AI3: left_lr
-        joy(gp['LeftJoystickY']),   # AI4: left_ud
-        0,                           # AI5: left_rocker  — unmapped
-        trig(gp['RightTrigger']),   # AI6: right_paddle
-        trig(gp['LeftTrigger']),    # AI7: left_paddle
-    ]
-    di = [
-        bool(gp['A']),           # DI0
-        bool(gp['B']),           # DI1
-        bool(gp['X']),           # DI2
-        bool(gp['Y']),           # DI3
-        bool(gp['LeftBumper']),  # DI4
-        bool(gp['RightBumper']), # DI5
-        bool(gp['LeftThumb']),   # DI6
-        bool(gp['RightThumb']),  # DI7
-        bool(gp['Back']),        # DI8
-        bool(gp['Start']),       # DI9
-        bool(gp['UpDPad']),      # DI10
-        bool(gp['DownDPad']),    # DI11
-    ]
-    return ai, di
-
-
-def _merge(nidaq_ai, nidaq_di, gp_ai, gp_di):
-    """Merge NiDAQ and gamepad inputs: larger |value| wins per axis, OR for buttons."""
-    ai = [n if abs(n) >= abs(g) else g for n, g in zip(nidaq_ai, gp_ai)]
-    di = [n or g for n, g in zip(nidaq_di, gp_di)]
-    return ai, di
-
-
-def _to_mask(di):
-    return sum(1 << i for i, v in enumerate(di) if v)
 
 
 def main():
@@ -69,33 +27,47 @@ def main():
     parser.add_argument("--ip", help="Robot IP:port  e.g. 192.168.0.132:8080")
     parser.add_argument("--id", type=int, default=1, dest="local_id", help="Local device ID")
     parser.add_argument("--rate", type=int, default=50, help="TX rate in Hz (default: 50)")
+    parser.add_argument("--config", default=str(DEFAULT_CONFIG_PATH), help="Controller config JSON path")
     parser.add_argument("--dry", action="store_true", help="Run without connecting to robot")
     args = parser.parse_args()
 
+    if args.rate <= 0:
+        parser.error("--rate must be greater than 0")
+
     if not args.dry and not args.ip:
         parser.error("--ip is required unless --dry is set")
+
+    host = None
+    port = None
+    if not args.dry:
+        host, _, port_str = args.ip.rpartition(':')
+        if not host or not port_str:
+            parser.error("--ip must be in HOST:PORT format")
+        try:
+            port = int(port_str)
+        except ValueError:
+            parser.error("--ip port must be an integer")
+        if not (0 < port <= 65535):
+            parser.error("--ip port must be in range 1..65535")
 
     _winmm = None
     if sys.platform == 'win32':
         _winmm = ctypes.WinDLL('winmm')
         _winmm.timeBeginPeriod(1)
 
-    print("Initializing NiDAQ joysticks...")
+    print("Initializing controller stack...")
     tx_period = 1.0 / args.rate
 
-    joy = NiDAQJoysticks(output_format=OutputFormat.INT8, deadzone=1.5, padding=2.5)
-    gamepad = XboxController()
+    controllers = ControllerStack(config_path=args.config)
 
     udp = None
     if not args.dry:
-        host, _, port_str = args.ip.rpartition(':')
-        port = int(port_str)
         udp = UDPSocket(local_id=args.local_id, max_age_seconds=0.5, nominal_rate_hz=args.rate)
         udp.setup(host=host, port=port, inputs='', outputs='<8bH', is_server=False)
         print(f"Connecting to {host}:{port}...")
         if not udp.handshake(timeout=10.0):
             print("Handshake failed")
-            joy.close()
+            controllers.close()
             udp.close()
             return
 
@@ -104,31 +76,42 @@ def main():
 
     try:
         next_time = time.monotonic()
-        tx_count = 0
-        dbg_time = time.monotonic()
+        display_period = 1.0 / 20.0
+        hz_window_seconds = 1.0
+        send_times = deque()
+        display_time = time.monotonic()
+        status_width = 0
+        last_gamepad_connected = None
 
         while True:
-            nidaq = joy.read()
-            gp = gamepad.read()
-            gp_ai, gp_di = _gp_to_channels(gp)
-
-            nidaq_di = [v > 0 for v in nidaq.di]
-            ai, di = _merge(nidaq.ai, nidaq_di, gp_ai, gp_di)
-            mask = _to_mask(di)
+            command = controllers.read()
+            ai = command["ai"]
+            mask = command["mask"]
+            gamepad_connected = command["gamepad_connected"]
+            if gamepad_connected != last_gamepad_connected:
+                status = "connected" if gamepad_connected else "disconnected"
+                print(f"\nGamepad {status}")
+                last_gamepad_connected = gamepad_connected
 
             if udp and not udp.send(ai + [mask]):
                 break
 
-            tx_count += 1
-
             now = time.monotonic()
-            if now - dbg_time >= 1.0:
-                hz = tx_count / (now - dbg_time)
-                gp_str = "GP:OK" if gamepad.is_connected() else "GP:--"
+            send_times.append(now)
+            while send_times and now - send_times[0] > hz_window_seconds:
+                send_times.popleft()
+
+            if now - display_time >= display_period:
+                if len(send_times) >= 2:
+                    hz = (len(send_times) - 1) / (send_times[-1] - send_times[0])
+                else:
+                    hz = 0.0
+                gp_str = "GP:OK" if gamepad_connected else "GP:--"
                 ax = " ".join(f"A{i}:{v:+4d}" for i, v in enumerate(ai))
-                print(f"\r{hz:5.0f}Hz {gp_str} | {ax} | BTN:{mask:012b}", end="", flush=True)
-                tx_count = 0
-                dbg_time = now
+                status = f"{hz:5.0f}Hz {gp_str} | {ax} | BTN:{mask:016b}"
+                status_width = max(status_width, len(status))
+                print(f"\r{status:<{status_width}}", end="", flush=True)
+                display_time = now
 
             next_time += tx_period
             sleep_for = next_time - time.monotonic()
@@ -141,9 +124,11 @@ def main():
         pass
     finally:
         if udp:
-            udp.send([0] * 8 + [0])
+            for _ in range(3):
+                udp.send([0] * 8 + [0])
+                time.sleep(min(tx_period, 0.02))
             udp.close()
-        joy.close()
+        controllers.close()
         if _winmm:
             _winmm.timeEndPeriod(1)
         print("\nStopped")
