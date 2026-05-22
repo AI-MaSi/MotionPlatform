@@ -36,12 +36,13 @@ JoystickData = namedtuple("JoystickData", ["ai", "di"])
 
 
 class NiDAQJoysticks:
-    def __init__(self, output_format=OutputFormat.INT8, deadzone=5.0, padding=1.0, sample_rate=250):
+    def __init__(self, output_format=OutputFormat.INT8, deadzone=5.0, padding=1.0, sample_rate=100):
         """
         :param output_format: OutputFormat.FLOAT or OutputFormat.INT8
         :param deadzone: Deadzone in %
         :param padding: Edge padding in %
-        :param sample_rate: AI hardware clock rate in Hz (should be >= loop rate)
+        :param sample_rate: AI hardware clock rate in Hz. In the main sender,
+                            this is also the control-loop pacing source.
         """
         if output_format not in OutputFormat:
             raise ValueError("output_format must be an OutputFormat enum value")
@@ -70,9 +71,8 @@ class NiDAQJoysticks:
                     max_val=MAX_VOLTAGE,
                     terminal_config=TerminalConfiguration.RSE
                 )
-            # Hardware-timed continuous acquisition: sample comfortably above the
-            # 20-100 Hz polling range so each poll can drain backlog and keep the
-            # newest sample without software-timed acquisition jitter.
+            # Hardware-timed continuous acquisition. Keep this near the desired
+            # control rate; much higher rates can build backlog and cause stalls.
             self.task_ai.timing.cfg_samp_clk_timing(
                 rate=self.sample_rate,
                 sample_mode=AcquisitionType.CONTINUOUS,

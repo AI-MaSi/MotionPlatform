@@ -20,7 +20,7 @@ Typical robot connection:
 python main.py --ip 192.168.0.132:8080 --rate 100
 ```
 
-The NiDAQ and gamepad paths have both been tested to poll well at 100 Hz on Windows with `timeBeginPeriod(1)` enabled by `main.py`. The NiDAQ reader uses a 500 Hz continuous hardware-timed analog task and drains available samples on each poll so the newest sample is used without overflowing the DAQmx buffer.
+The NiDAQ and gamepad paths have both been tested to poll well at 100 Hz on Windows with `timeBeginPeriod(1)` enabled by `main.py`. `--rate` is passed directly to the NiDAQ analog hardware sample rate, and the blocking NiDAQ read is used as the sender loop clock.
 
 The gamepad is event-driven in a background thread. A physically connected but idle controller may show as disconnected until it sends an input event; this is acceptable for normal use because `read()` returns neutral values while disconnected.
 

@@ -47,6 +47,7 @@ class JoystickPublisher(Node):
             output_format=OutputFormat.INT8,
             deadzone=deadzone,
             padding=padding,
+            sample_rate=rate,
         )
 
         self.pub_ai = self.create_publisher(Int8MultiArray, 'joystick/axes', 10)

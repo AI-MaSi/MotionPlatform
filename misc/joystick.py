@@ -123,23 +123,18 @@ def main():
             return
 
         print("Initializing NiDAQ joystick...")
-        joy = NiDAQJoysticks(output_format=OutputFormat.INT8, deadzone=1.5, padding=2.5)
-
-        period = 1.0 / args.rate
-        next_time = time.monotonic()
+        joy = NiDAQJoysticks(
+            output_format=OutputFormat.INT8,
+            deadzone=1.5,
+            padding=2.5,
+            sample_rate=args.rate,
+        )
 
         print(f"NiDAQ to vJoy at {args.rate} Hz - Ctrl+C to stop")
         while True:
             data = joy.read()
 
             _update_vjoy(vjoy, data)
-
-            next_time += period
-            sleep_for = next_time - time.monotonic()
-            if sleep_for > 0:
-                time.sleep(sleep_for)
-            else:
-                next_time = time.monotonic()
     except KeyboardInterrupt:
         pass
     finally:

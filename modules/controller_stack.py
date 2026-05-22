@@ -376,13 +376,18 @@ def to_mask(di: Iterable[bool]) -> int:
 
 
 class ControllerStack:
-    def __init__(self, config_path=DEFAULT_CONFIG_PATH):
+    def __init__(self, config_path=DEFAULT_CONFIG_PATH, nidaq_sample_rate=100):
         from modules.NiDAQ_controller import NiDAQJoysticks, OutputFormat
         from modules.gamepad_module import XboxController
 
         config = load_controller_config(config_path)
         self.config = config
-        self.joy = NiDAQJoysticks(output_format=OutputFormat.INT8, deadzone=0.0, padding=2.5)
+        self.joy = NiDAQJoysticks(
+            output_format=OutputFormat.INT8,
+            deadzone=0.0,
+            padding=2.5,
+            sample_rate=nidaq_sample_rate,
+        )
         self.gamepad = XboxController()
 
     def read(self) -> dict:
