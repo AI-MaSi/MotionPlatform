@@ -10,6 +10,7 @@ UDP output: 8 × int8 axes + 1 × uint16 button bitmask  ('< 8bH')
 Usage:
     python main.py --ip 192.168.0.132:8080
     python main.py --dry
+    python main.py --dry --verbose   # show robot channel names instead of raw axis values
 """
 
 import argparse
@@ -23,6 +24,30 @@ import time
 
 from modules.controller_stack import ControllerStack, DEFAULT_CONFIG_PATH
 from modules.udp_socket import UDPSocket
+
+
+# Robot channel names by packet byte index (matches simple_drive.py receiver)
+_ROBOT_CHANNELS = {
+    0: "bucket",
+    1: "boom",
+    2: "right_rocker",
+    3: "slew",
+    4: "arm",
+    5: "left_rocker",
+    6: "trackR",
+    7: "trackL",
+}
+_VERBOSE_THRESHOLD = 5  # int8 units out of 127
+
+
+def _format_channels(ai):
+    parts = []
+    for i, v in enumerate(ai):
+        if abs(v) >= _VERBOSE_THRESHOLD:
+            name = _ROBOT_CHANNELS.get(i, f"ai[{i}]")
+            sign = "+" if v > 0 else "-"
+            parts.append(f"{name} {sign}({v:+d})")
+    return "  ".join(parts) if parts else "(nothing active)"
 
 
 def _ts():
@@ -89,6 +114,7 @@ def main():
     parser.add_argument("--rate", type=int, default=100, help="NiDAQ/TX rate in Hz (default: 100)")
     parser.add_argument("--config", default=str(DEFAULT_CONFIG_PATH), help="Controller config JSON path")
     parser.add_argument("--dry", action="store_true", help="Run without connecting to robot")
+    parser.add_argument("--verbose", action="store_true", help="Show robot channel names instead of raw axis values")
     args = parser.parse_args()
 
     if args.rate <= 0:
@@ -188,7 +214,10 @@ def main():
                 else:
                     hz = 0.0
                 gp_str = "GP:OK" if gamepad_connected else "GP:--"
-                ax = " ".join(f"A{i}:{v:+4d}" for i, v in enumerate(ai))
+                if args.verbose:
+                    ax = _format_channels(ai)
+                else:
+                    ax = " ".join(f"A{i}:{v:+4d}" for i, v in enumerate(ai))
                 status = f"[{_ts()}] {rate_label}:{hz:5.0f}Hz {gp_str} | {ax} | BTN:{mask:016b}"
                 status_width = max(status_width, len(status))
                 console.status(status, status_width)
