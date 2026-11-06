@@ -5,6 +5,7 @@ Reads analog (joystick) and digital (button) inputs from a National Instruments 
 
 import nidaqmx
 import numpy as np
+import time
 from nidaqmx.constants import AcquisitionType, TerminalConfiguration
 from nidaqmx.errors import DaqError
 from nidaqmx.stream_readers import AnalogMultiChannelReader
@@ -79,7 +80,11 @@ class NiDAQJoysticks:
                 samps_per_chan=self.sample_rate,  # 1-second ring buffer
             )
             self.ai_reader = AnalogMultiChannelReader(self.task_ai.in_stream)
+            self.start_before_ns = time.perf_counter_ns()
             self.task_ai.start()
+            self.start_after_ns = time.perf_counter_ns()
+            self.actual_sample_rate = self.task_ai.timing.samp_clk_rate
+            self.samples_read = 0
             print(f"NiDAQ initialized: {len(AI_CHANNELS)} AI channels @ {self.sample_rate} Hz, {len(DI_CHANNELS)} DI channels.")
             print(f"NiDAQ ready | Deadzone: {self.deadzone*100:.1f}% | Padding: {self.padding*100:.1f}%")
         except DaqError as e:
@@ -125,14 +130,16 @@ class NiDAQJoysticks:
             return JoystickData(ai=ai, di=di)
         return JoystickData(ai=ai_floats, di=di_floats)
 
-    def read(self):
-        """Read channels and return JoystickData(ai, di)."""
+    def read(self, *, preserve_samples=False):
+        """Read inputs; preserve_samples reads the next sample without discarding backlog."""
         try:
             # Drain completed AI samples and use the newest sample per channel.
             # Reading a fixed single sample at a slower polling rate leaves
             # backlog and eventually raises DAQmx -200279.
             samples_available = self.task_ai.in_stream.avail_samp_per_chan
             samples_to_read = min(samples_available, self.sample_rate) if samples_available > 0 else 1
+            if preserve_samples:
+                samples_to_read = 1
             ai_buffer = self.ai_buffers.get(samples_to_read)
             if ai_buffer is None:
                 ai_buffer = np.empty((len(AI_CHANNELS), samples_to_read), dtype=np.float64)
@@ -144,6 +151,8 @@ class NiDAQJoysticks:
             if samples_read <= 0:
                 raise RuntimeError("NiDAQ returned no analog samples")
             ai_raw = ai_buffer[:, samples_read - 1].tolist()
+            self.samples_read += samples_read
+            self.last_raw_ai = ai_raw
             di_raw = self.task_di.read()
         except DaqError as e:
             raise RuntimeError(f"Failed to read from NiDAQ: {e}")
